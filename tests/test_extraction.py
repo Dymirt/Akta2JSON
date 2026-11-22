@@ -194,12 +194,23 @@ class ExtractionTest(unittest.TestCase):
 
         for value, expected in (
             (None, None),
-            ("31.02.2026", "31.02.2026"),
-            ("data\n  nieczytelna", "data nieczytelna"),
+            ("31.02.2026", None),
+            ("data\n  nieczytelna", None),
+            ("2026-01-XX", None),
         ):
             with self.subTest(value=value):
                 result = restore_markers({"przelew_bankowy": {"data_operacji": value}}, {}, template.formatters)
                 self.assertEqual(result["przelew_bankowy"]["data_operacji"], expected)
+
+    def test_attorney_given_name_initial_after_marker_restoration(self):
+        path = Path(__file__).resolve().parents[1] / "oczekiwane-json/pelnomocnictwo.jsonc"
+        template = DocumentTemplate.load(path)
+        for original, expected in (("anna Nowak", "Anna Nowak"), ("Anna de Luca", "Anna de Luca"),
+                                   ("van Dijk", "van Dijk"), ("adw. Nowak", "adw. Nowak")):
+            with self.subTest(original=original):
+                data = {"pelnomocnicy": [{"imie_nazwisko": "[OSOBA_1]"}]}
+                result = restore_markers(data, {"[OSOBA_1]": original}, template.formatters)
+                self.assertEqual(result["pelnomocnicy"][0]["imie_nazwisko"], expected)
 
     def test_reject_mismatched_input_before_sending(self):
         self.text.write_text("[PODMIOT_2]", encoding="utf-8")

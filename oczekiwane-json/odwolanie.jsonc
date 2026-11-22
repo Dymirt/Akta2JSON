@@ -7,7 +7,7 @@
 // @normalize ZamowieniePubliczne.numer_ted ted
 {
   "OdwolanieKIO": {
-    "data": "2025-10-13", // Data pisma z datownika pierwszej strony (YYYY-MM-DD). Gdy nagłówek nie zawiera daty pisma, wpisz null. Data czynności lub jej doręczenia należy do czynnosc_dzien.
+    "data": "2025-10-13", // Przepisz pełną datę pisma z datownika pierwszej strony (YYYY-MM-DD). Gdy pismo zaczyna się od adresata i danych stron, sprawdź pozostałe wiersze nagłówka. Bez datownika zwróć null. Daty doręczenia, czynności, podpisania pełnomocnictwa i ogłoszenia mają inne znaczenie. Nie uzupełniaj nieczytelnego dnia ani miesiąca.
     "czynnosc_dzien": "2025-10-01", // Data czynności uruchamiającej bieg terminu odwołania dla pierwszego zarzutu (ISO YYYY-MM-DD). Datę odczytaj z opisu tego samego działania lub zawiadomienia o nim. Jeśli dla pierwszego zarzutu jej brak, zwróć null.
     "czynnosc_powod_id": 4,
 	//Identyfikator powodu odwołania jako liczba całkowita 1-12 (bez zera wiodącego), ustalana WYŁĄCZNIE na podstawie pierwszego zarzutu:
@@ -33,6 +33,7 @@
   },
   "Odwolujacy": [
     {
+      // „Konsorcjum wykonawców” składa jedno odwołanie. Utwórz dla niego jeden rekord z nazwą i numerami członka oznaczonego jako lider. Oznaczenie tej roli może poprzedzać nazwę lub stać w nawiasie za nią. Dane każdego członka kończą się przed nagłówkiem następnego członka.
       // Identyfikatory odczytaj z bloku odwołującego, a przy konsorcjum z bloku lidera. Rozpisz wiersz z kilkoma identyfikatorami na osobne pola według ich etykiet. Indeksy znaczników mogą się różnić.
       "krs": "0000054588", // Skopiuj [KRS_…] lub jawny dziesięciocyfrowy numer KRS tej strony jako tekst. Jeśli strona ma tylko NIP i REGON, wpisz null. Nazwa rejestru po „wpisany do” nie jest numerem KRS.
       "nazwa": "STRABAG Sp. z o.o.", // Pełna nazwa podmiotu opisanego w tekście jako Odwołujący (sekcja 'Odwołujący' / wykonawca wnoszący odwołanie). Jeśli występuje konsorcjum, podaj nazwę Lidera konsorcjum.
@@ -43,7 +44,7 @@
         // Odczytaj osobę, kancelarię i mail z tego samego bloku reprezentacji. Wspólny pełnomocnik konsorcjum bywa wymieniony po ostatnim partnerze. Jego dane wpisz do rekordu lidera.
         // Jeżeli wymieniono kilku pełnomocników bez wskazania osoby do kontaktu, wybierz pierwszego.
         "imie_nazwisko": "Marcel Kielce", // Imię i nazwisko w mianowniku, bez tytułu zawodowego. Jeśli ta sama osoba występuje w kilku przypadkach, wybierz znacznik z podpisu lub imiennej rubryki w mianowniku.
-        "nazwa": "Kancelaria Radców Prawnych", // Z rubryki „adres do korespondencji” pełnomocnika przepisz odbiorcę przed ulicą. Gdy rubryka zaczyna się od [PODMIOT_…], po którym następuje przecinek i ulica, do Odwolujacy[].pelnomocnik.nazwa skopiuj wyłącznie ten jeden znacznik. Zakończ przed przecinkiem. Znaczniki ULICA, KOD_POCZTOWY i ADRES należą do adresu. Sam adres bez nazwy daje null.
+        "nazwa": "Kancelaria Radców Prawnych", // Z rubryki „adres do korespondencji” lub nagłówka kancelarii przepisz całą nazwę odbiorcy. Zachowaj słowa poprzedzające znacznik nazwy i jej dalsze człony. Gdy odbiorca to wyłącznie [PODMIOT_…], zwróć ten znacznik. Zakończ przed adresem ulicznym. Sam adres bez nazwy daje null.
         "mail": "info@prawnik.xy" // adres email kontaktowy do pełnomocnika
       }
     }
@@ -64,7 +65,7 @@
   "ZamowieniePubliczne": {
     // Dla BZP i TED osobno sprawdź ogłoszenia w rubryce „dotyczy” lub przy numerze referencyjnym bieżącego postępowania. Pomiń numery przywołane dla poprzednich lub porównywanych postępowań. Dla rejestru bez numeru dotyczącego bieżącego postępowania wpisz null.
     "numer_bzp": null, // Skopiuj [NR_BZP_…] bieżącego ogłoszenia, również gdy obok podano TED. Kilka znaczników jednego numeru połącz spacją, bez dopisywania roku lub prefiksu. W jawnym numerze zachowaj ewentualny sufiks korekty.
-    "numer_postepowania": null, // Numer referencyjny/nr postępowania/numer wewnętrzny (ID po etykiecie), np. 'ZP.039.2025', 'DZP.260.11.2025', 'V.ROZ.2710.125.2025', 'ZSCKR/822/2025'.
+    "numer_postepowania": null, // Przepisz identyfikator po etykiecie „nr referencyjny”, „nr postępowania” lub „numer wewnętrzny”. Wartość może zaczynać się w następnym wierszu. Zachowaj wszystkie segmenty, cyfry i separatory. Przecinek oddzielający rubrykę ogłoszenia zamyka ten numer.
     "numer_ted": "641651-2025", // Skopiuj [NR_TED_…] bieżącego ogłoszenia. Kilka znaczników jednego numeru połącz spacją. Jawny numer z dokumentu może mieć format NNNNNN-YYYY lub YYYY/S ###-NNNNNN. Jeśli dokument podaje tylko BZP, wpisz tu null. Cyfry przykładowe we wzorcu nie stanowią źródła.
     // Zachowaj kolejność fragmentów tytułu z jednego wystąpienia w opisie postępowania.
     "tytul": "Wykonanie robót budowlanych oraz dostawa i montaż wyposażenia w ramach zadania, polegającego na przebudowie i rozbudowie Filharmonii Pomorskiej w Bydgoszczy" // Tytuł zamówienia lub postępowania, jeśli występuje w dokumencie.

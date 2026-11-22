@@ -58,7 +58,8 @@ RACHUNKI_W_ZDANIU = {
         + NUMER_W_ZDANIU + r"prowadzony dla\b", re.I
     ),
 }
-STOPKA_BANKU = re.compile(r"Dokument jest wydrukiem komputerowym\b", re.I)
+STOPKA_BANKU = re.compile(r"Dokument jest wydrukiem kompu[ti]erowym\b", re.I)
+SZCZEGOLY_OBCIAZENIA = re.compile(r"(?:. \* )?Przelew z rachunku:? Szczegóły transakcji", re.I)
 # Przykłady ciągłości wiersza: numer sprawy, faktury lub transakcji.
 ODSYLACZ = re.compile(r"\b(?:[^\W\d_]+[./_-]?[0-9]|[0-9]+[/_-][0-9]+)")
 
@@ -91,8 +92,66 @@ def _rachunki_pionowe(strona):
             yield i + 3, rola
 
 
+def _szczegoly_obciazenia(strona):
+    """Powiąż komórki formularza z kolumnami tylko przy jednym przelewie wychodzącym."""
+    naglowki = [i for i, w in enumerate(strona) if SZCZEGOLY_OBCIAZENIA.fullmatch(w)]
+    odbiorcy = [i for i, w in enumerate(strona) if w.casefold() == "rachunek odbiorcy:"]
+    if len(naglowki) != 1 or len(odbiorcy) != 1:
+        return strona
+    i, j = naglowki[0] + 1, odbiorcy[0]
+    if i >= j:
+        return strona
+    wynik = strona.copy()
+    numer = re.fullmatch(r"(?:\w )?Numer rachunku (.+)", strona[i], re.I)
+    if numer and RACHUNEK_W_TABELI.fullmatch(numer[1]):
+        wynik[i] = "Z rachunku: " + numer[1]
+        if strona[j - 1].casefold() == "opis":
+            wynik[j - 1] = ""  # Nagłówek sekcji obejmującej m.in. tytuł i rachunek odbiorcy.
+        for k in range(j + 1, len(strona) - 1):
+            if (strona[k].casefold() == "typ transakcji przelew z rachunku" and
+                    re.fullmatch(rf"Kwota ({KWOTA_Z_WALUTA})", strona[k + 1], re.I)):
+                poczatki = [n for n in range(j + 1, k) if strona[n].casefold() == "tytuł:"]
+                if len(poczatki) == 1:
+                    n = poczatki[0]
+                    if n + 1 < k and all(not re.search(r":|\.{2,}", w) and
+                                         not ETYKIETA_FORMULARZA.fullmatch(w) for w in strona[n + 1:k]):
+                        wynik[n:k] = ["Tytuł: " + " ".join(strona[n + 1:k])] + [""] * (k - n - 1)
+    elif (i + 7 < j and [w.casefold() for w in strona[i:i + 5]] ==
+          ["numer rachunku", "data waluty", "data operacji", "opis", "typ transakcji"]
+          and RACHUNEK_W_TABELI.fullmatch(strona[j - 3])
+          and all(re.fullmatch(r"\d{4}-\d{2}-\d{2}", w) for w in strona[j - 2:j])
+          and not any(RACHUNEK_W_TABELI.search(w) or re.search(r"\d{4}-\d{2}-\d{2}", w)
+                      for w in strona[i + 5:j - 3])):
+        wynik[i + 2:i + 4] = ["", ""]
+        wynik[j - 3] = "Z rachunku: " + strona[j - 3]
+        wynik[j - 1] = "Data operacji: " + strona[j - 1]
+        for k in range(j + 1, len(strona) - 1):
+            if strona[k].casefold() == "przelew z rachunku" and re.fullmatch(KWOTA_Z_WALUTA, strona[k + 1], re.I):
+                wynik[k + 1] = "Kwota: " + strona[k + 1]
+    return wynik
+
+
+def _data_wykonanego_zlecenia(strona):
+    """Datę zleconą potwierdzają wykonanie operacji i ten sam dzień na podpisanym potwierdzeniu."""
+    tekst = "\n".join(strona)
+    if not re.search(r"(?im)^Szczegóły zlecenia(?: \w)?\nTyp zlecenia[: ]+Przelew krajowy\n"
+                     r"(?:Status[ .:]*|[_. ]*[A-Z]{1,2} )wykonane\nDane zleceniodawcy$", tekst):
+        return
+    if sum(w.casefold() == "dane zlecenia" for w in strona) != 1:
+        return
+    m = re.search(r"(?im)^Data: (\d{4})\.(\d{2})\.(\d{2}) \d{2}:\d{2}:\d{2} (?:CEST|CET)\b", tekst)
+    if not m:
+        return
+    for i, w in enumerate(strona):
+        zlecona = re.fullmatch(r"Z[ltł]econa data wykonania (\d{2})[. ](\d{2})[. ](\d{4})(?: [.* ]+)?", w, re.I)
+        if zlecona and zlecona.groups()[::-1] == m.groups():
+            yield i, "Data wykonania: " + "-".join(m.groups())
+
+
 def _wiersze_tabeli(strona):
     """Rozdziel nagłówki i komórki, które OCR odczytał poziomo w jednym wierszu."""
+    strona = [w for w in _szczegoly_obciazenia(strona) if w]
+    daty = dict(_data_wykonanego_zlecenia(strona))
     kolumny_wyciagu = any(w.casefold() == "data opis kwota" for w in strona)
     # W dwukolumnowym formularzu OCR potrafi odczytać najpierw etykiety, potem rachunki z nazwami stron.
     tekst_strony = "\n".join(strona)
@@ -107,7 +166,9 @@ def _wiersze_tabeli(strona):
             role = dict(zip(numery, ("Z rachunku", "Na rachunek")))
     i = 0
     while i < len(strona):
-        wiersz = strona[i]
+        wiersz = daty.get(i, strona[i])
+        if kolumny_wyciagu:
+            wiersz = re.sub(r"^\. (?=Tytuł:)", "", wiersz, flags=re.I)
         if i in role:
             wiersz = f"{role[i]}: {wiersz}"
         elif i and strona[i - 1].casefold() == "dane zleceniodawcy":
@@ -129,6 +190,9 @@ def _wiersze_tabeli(strona):
                 continue
         # Czasem prawa komórka wpada pomiędzy dwa wiersze lewej etykiety.
         czesc, _, wartosc = wiersz.partition(" ")
+        if (czesc.casefold() == "numer" and re.fullmatch(r"transakcji [i|. ]{1,4}", nastepny, re.I)
+                and i + 1 < len(strona) and re.match(r"Źródło\b", strona[i + 1], re.I)):
+            nastepny = "transakcji"
         if (czesc.casefold(), nastepny.casefold()) in {("numer", "transakcji"), ("data", "wykonania")}:
             yield f"{czesc} {nastepny}: {wartosc}"
             i += 1
@@ -253,6 +317,8 @@ def _tytul(wartosc, dalsze, wiersze, numer_transakcji):
         fragmenty = [wartosc]
         for wiersz in wiersze[dalsze:]:
             if STOPKA_BANKU.match(wiersz):
+                return " ".join(fragmenty)
+            if wiersz.casefold() == "typ transakcji przelew z rachunku":
                 return " ".join(fragmenty)
             if ETYKIETA_FORMULARZA.fullmatch(wiersz):
                 # Ostatni token wielowierszowej wartości ma dodatkowe potwierdzenie w osobnym polu.

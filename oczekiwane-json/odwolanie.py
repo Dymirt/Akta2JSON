@@ -31,6 +31,11 @@ _ETYKIETA_TED = re.compile(
 )
 _NUMER_TED = re.compile(r"(?<![\w/-])(?:[0-9]{4}/S\s*[0-9]{3}-[0-9]{6}|[0-9]{6}-[0-9]{4})(?![\w/-])", re.I)
 _ZRODLO_TED = re.compile(r"\bTED\b|\bDzienniku\s+Urzędowym\s+(?:UE|Unii\s+Europejskiej)\b", re.I)
+_ZRODLO_DZIENNIKA = r"Dzienniku\s+[^\W\d_]{5,14}\s+Unii\s+Europejskiej"
+_DZIENNIK_TED = re.compile(r"\bogłoszeni[ae]\s+w\s+" + _ZRODLO_DZIENNIKA + r"\s+nr\s+", re.I)
+_OCR_NUMERU_TED = re.compile(r"(?<![\w/-])([0-9]{4})/(?:5|85)\s+[0-9]{3}-([0-9]{6})(?![\w/-])")
+_ETYKIETA_REFERENCJI = re.compile(r"\b(?:nr\.?|numer)\s+(?:referencyjny(?:\s+sprawy)?|postępowania)\s*:\s*", re.I)
+_REFERENCJA = re.compile(r"[A-Z][A-Z0-9]*(?:(?:[./-] *)[A-Z0-9]+)+")
 _HISTORYCZNE = r"(?:poprzedni\w*|wcześniejsz\w*|archiwaln\w*|historyczn\w*|inn(?:ego|ym|e|ej))"
 _PRZEDMIOT_WZMIANKI = r"(?:ogłoszeni|postępowani|zamówieni)\w*"
 _INNE_OGLOSZENIE = re.compile(
@@ -89,7 +94,7 @@ _INNA_ROLA_DATY = re.compile(
 )
 _SLAD_DATOWNIKA = re.compile(
     rf"\b(?:{_MIESIACE}|dnia|data pisma|data wniesienia)\b|\b\d{{1,2}}\s*[./-]\s*\d{{1,2}}\s*[./-]\s*\d{{2,4}}\b|"
-    r"\b\d{1,2} [IVX]+ \d{4}\b", re.I,
+    r"\b\d{1,2}(?:\s*[./-]\s*|\s+)[IVX]+(?:\s*[./-]\s*|\s+)\d{4}\b", re.I,
 )
 
 
@@ -165,6 +170,12 @@ def _daty_czynnosci_i_pisma(tekst, naglowek, dane, deklaracja):
     if _SLAD_DATOWNIKA.search(naglowek_pisma) or _DATA_W_TRESCI.search(naglowek_pisma):
         return
     if re.search(r"\b(?:tego samego dnia|tego dnia|w tym samym dniu)\b", tresc, re.I):
+        return
+    if (re.fullmatch(r"Prezes Krajowej Izby Odwoławczej", naglowek[0], re.I)
+            and any(re.match(r"Odwołujący\s*:", w, re.I) for w in naglowek)
+            and any(re.match(r"Zamawiający\s*:", w, re.I) for w in naglowek)):
+        # Sprawdziliśmy pełny nagłówek od oznaczenia adresata do pierwszego zdania odwołania.
+        dane["data"] = None
         return
     wystapienia = {m.span() for m in _DATA_W_TRESCI.finditer(tresc) if normalizuj(m[0]) == data_pisma}
     inne_role = {m.span(m.lastgroup) for m in _INNA_ROLA_DATY.finditer(tresc)}
@@ -242,6 +253,31 @@ def _rozdziel_pelnomocnikow(naglowek, tekst, strony):
     osoba["imie_nazwisko"] = wybrana
 
 
+def _pelna_nazwa_kancelarii(naglowek, strony):
+    if not isinstance(strony, list) or len(strony) != 1 or not isinstance(strony[0], dict):
+        return
+    osoba = strony[0].get("pelnomocnik")
+    if not isinstance(osoba, dict) or not isinstance(osoba.get("nazwa"), str):
+        return
+    bloki = _ODWOLUJACY.findall(naglowek)
+    if len(bloki) != 1:
+        return
+    wiersze = [w.lstrip(" .:©") for w in bloki[0].splitlines() if w.strip(" .:©")]
+    nazwy = set()
+    for przed, nazwa, po in zip(wiersze, wiersze[1:], wiersze[2:]):
+        if not re.search(r"\bkancelaria\b", nazwa, re.I) or not re.match(r"ul\.\s+\w", po, re.I):
+            continue
+        adres_kancelarii = re.fullmatch(r"adres do korespondencji[ :.]*", przed, re.I)
+        if (adres_kancelarii or _ADWOKAT_LUB_RADCA.fullmatch(przed)) and not re.search(r"[:|@;]|\bul\.", nazwa, re.I):
+            nazwy.add(nazwa)
+    # Rozszerz wyłącznie nazwę już rozpoznaną przez model, jeśli cały fragment stoi w jednej rubryce.
+    fragment = osoba["nazwa"].strip()
+    if len(nazwy) == 1 and fragment:
+        nazwa = nazwy.pop()
+        if re.search(r"(?<!\w)" + re.escape(fragment) + r"(?!\w)", nazwa, re.I):
+            osoba["nazwa"] = nazwa
+
+
 def _mail_pelnomocnika_z_ocr(naglowek, tekst, strony):
     if not isinstance(strony, list) or len(strony) != 1 or not isinstance(strony[0], dict):
         return
@@ -284,28 +320,133 @@ def _mail_pelnomocnika_z_ocr(naglowek, tekst, strony):
         _wpisz(osoba, "mail", adresy.pop())
 
 
-def _numer_ted(naglowek):
+def _opis_postepowania(naglowek):
     opis = re.split(r"(?im)^dotyczy\s*:", naglowek)
     if len(opis) != 2:
         return None
     opis = re.split(r"(?im)^(?:zamawiający\b|odwołujący\b|wartość zamówienia:|wpis od odwołania:|odwołanie\b)",
                     opis[1], maxsplit=1)[0]
     opis = opis.strip()
-    if not re.match(r"postępowania\s+o\s+udzielenie\s+zamówienia\b", opis, re.I):
+    if not re.match(r"postępowania\s+o\s+udzielenie\s+zamówienia\b", opis, re.I) or _INNE_OGLOSZENIE.search(opis):
         return None
-    if len(_ZRODLO_TED.findall(opis)) != 1 or _INNE_OGLOSZENIE.search(opis):
+    return opis
+
+
+def _numer_referencyjny(opis):
+    etykiety = list(_ETYKIETA_REFERENCJI.finditer(opis))
+    if len(etykiety) != 1:
         return None
+    poczatek = etykiety[0].start()
+    if not re.search(r"[,;\n]\s*$", opis[:poczatek]):
+        return None
+    reszta = opis[etykiety[0].end():]
+    dopasowanie = _REFERENCJA.match(reszta)
+    if dopasowanie and re.search(r"[0-9]", dopasowanie[0]):
+        koniec = reszta[dopasowanie.end():].strip()
+        if not koniec or re.match(r"^[,;]\s*(?:ogłoszenie|(?:numer\s+)?(?:TED|BZP))\b", koniec, re.I):
+            return dopasowanie[0].replace(" ", "")
+    return None
+
+
+_CZLONEK_KONSORCJUM = re.compile(
+    r"^[0-9]+[.)]\s+(?:(?P<sam>Lider|Partner) Konsorcjum:"
+    r"|(?P<nazwa>[^():]+)\s+\((?P<obok>Lider|Partner) Konsorcjum\))$", re.I,
+)
+_REJESTRY_LIDERA = {
+    "krs": r"[0-9]{10}", "nip": r"(?:[0-9]{10}|[0-9]{3}-[0-9]{2,3}-[0-9]{2,3}-[0-9]{2,3})",
+    "regon": r"(?:[0-9]{9}|[0-9]{14})",
+}
+
+
+def _dane_lidera(naglowek, tekst, strony):
+    if not isinstance(strony, list) or not strony or not all(isinstance(s, dict) for s in strony):
+        return
+    sekcje = [i for i, w in enumerate(naglowek) if _NAGLOWEK_ODWOLUJACEGO.match(w)]
+    if len(sekcje) != 1 or not re.match(r"Odwołujący:\s*Konsorcjum wykonawców\b", naglowek[sekcje[0]], re.I):
+        return
+    opis = naglowek[sekcje[0] + 1:]
+    koniec = next((i for i, w in enumerate(opis) if re.match(r"(?:Zamawiający|Dotyczy|Przystępujący)\s*:", w, re.I)), len(opis))
+    opis = opis[:koniec]
+    czlonkowie = [(i, m) for i, w in enumerate(opis) if (m := _CZLONEK_KONSORCJUM.fullmatch(w))]
+    liderzy = [i for i, (_, m) in enumerate(czlonkowie) if (m["sam"] or m["obok"]).casefold() == "lider"]
+    if len(liderzy) != 1 or liderzy[0] + 1 >= len(czlonkowie):
+        return
+    indeks, etykieta = czlonkowie[liderzy[0]]
+    blok = opis[indeks + 1:czlonkowie[liderzy[0] + 1][0]]
+    if not blok or any(re.match(r"^[0-9]+[.)]\s+", w) for w in blok):
+        return
+    nazwa = etykieta["nazwa"]
+    if not nazwa:
+        granica = next((i for i, w in enumerate(blok) if re.match(
+            r"(?:(?:ul|al|pl)\.\s|[0-9]{2}-[0-9]{3}\s|(?:adres(?: siedziby)?|KRS|NIP|REGON)\s*:)", w, re.I)), None)
+        if not granica:
+            return
+        nazwa = " ".join(blok[:granica])
+        if granica > 1 and not any(isinstance(s.get("nazwa"), str)
+                                   and " ".join(s["nazwa"].split()).casefold() == nazwa.casefold() for s in strony):
+            return
+    nazwa = nazwa.strip()
+    if not re.search(r"[^\W\d_]", nazwa) or ":" in nazwa:
+        return
+    dane = {"nazwa": nazwa}
+    dane_rejestrowe = "\n".join(blok)
+    for klucz, format_numeru in _REJESTRY_LIDERA.items():
+        rubryki = re.findall(rf"\b{klucz}\s*:", dane_rejestrowe, re.I)
+        wartosci = re.findall(rf"\b{klucz}\s*:\s*({format_numeru})(?=[ \t]*(?:[,;]|$))", dane_rejestrowe, re.I | re.M)
+        if len(rubryki) != 1 or len(wartosci) != 1:
+            return
+        dane[klucz] = wartosci[0].replace("-", "")
+    if len(dane["nip"]) != 10:
+        return
+    # Drugi zapis tej samej nazwy przy formalnym wskazaniu odwołującego potwierdza pisownię.
+    nazwy = re.findall(r"\bDziałając w imieniu Odwołującego\s*[–—-]\s*(" + re.escape(nazwa)
+                       + r")\s*\(dalej:\s*[„\"]Odwołujący[”\"]\)", " ".join(tekst.split()), re.I)
+    if len(set(nazwy)) == 1:
+        dane["nazwa"] = nazwy[0]
+    if len(strony) == 1:
+        lider = strony[0]
+    else:
+        pasujacy = [s for s in strony if s.get("nazwa") == dane["nazwa"]
+                    or sum(s.get(k) == dane[k] for k in _REJESTRY_LIDERA) >= 2]
+        pozostale = [{k: v for k, v in s.items() if k not in dane} for s in strony]
+        if len(pasujacy) == 1:
+            lider = pasujacy[0]
+        elif all(zapis == pozostale[0] for zapis in pozostale[1:]):
+            # Każdy rekord podał te same dane reprezentacji, a identyfikację rozstrzyga blok lidera.
+            lider = strony[0]
+        else:
+            return
+    for klucz, wartosc in dane.items():
+        _wpisz(lider, klucz, wartosc)
+    strony[:] = [lider]
+
+
+def _numer_ted(opis):
     etykiety = list(_ETYKIETA_TED.finditer(opis))
-    numery = list(_NUMER_TED.finditer(opis))
-    if len(etykiety) != 1 or len(numery) != 1 or numery[0].start() != etykiety[0].end():
+    zrodla = _ZRODLO_TED.findall(opis)
+    dziennik = list(_DZIENNIK_TED.finditer(opis))
+    numery = [(m, FORMATTERS["ted"](m[0])) for m in _NUMER_TED.finditer(opis)]
+    # Po słowach „Dzienniku … Unii Europejskiej nr” OCR może zniekształcić nazwę lub literę S.
+    # Rok, numer wydania i wszystkie cyfry identyfikatora muszą być obecne w źródle.
+    if len(dziennik) > 1 or (dziennik and etykiety and dziennik[0].end() != etykiety[0].end()):
+        return None
+    if dziennik:
+        if not etykiety and not zrodla:
+            etykiety, zrodla = dziennik, [dziennik[0][0]]
+        if etykiety and etykiety[0].end() == dziennik[0].end():
+            numery.extend((m, f"{m[2]}-{m[1]}") for m in _OCR_NUMERU_TED.finditer(opis))
+    if len(zrodla) != 1 or len(etykiety) != 1 or len(numery) != 1:
+        return None
+    numer, wartosc = numery[0]
+    if numer.start() != etykiety[0].end():
         return None
     if not re.search(r"(?:[,;]|\n)\s*(?:numer(?:\s+ogłoszenia)?\s+)?$", opis[:etykiety[0].start()], re.I):
         return None
-    koniec_wiersza = opis[numery[0].end():].partition("\n")[0].strip()
+    koniec_wiersza = opis[numer.end():].partition("\n")[0].strip()
     kolejne_pole = re.match(r"[,;]\s*(?:nr\.?|numer)\s+(?:referencyjny(?: sprawy)?|postępowania|BZP)\s*:",
                             koniec_wiersza, re.I)
     if koniec_wiersza in {"", ".", ",", ";"} or kolejne_pole:
-        return FORMATTERS["ted"](numery[0][0])
+        return wartosc
     return None
 
 
@@ -497,7 +638,9 @@ class odwolanie:
         _pierwszy_zarzut(tekst, wynik.get("OdwolanieKIO"), deklaracja)
         naglowek = _naglowek(tekst)
         tekst_naglowka = "\n".join(naglowek)
+        _dane_lidera(naglowek, tekst, wynik.get("Odwolujacy"))
         _rozdziel_pelnomocnikow(tekst_naglowka, tekst, wynik.get("Odwolujacy"))
+        _pelna_nazwa_kancelarii(tekst_naglowka, wynik.get("Odwolujacy"))
         _mail_pelnomocnika_z_ocr(tekst_naglowka, tekst, wynik.get("Odwolujacy"))
         odwolanie_kio = wynik.get("OdwolanieKIO")
         if isinstance(odwolanie_kio, dict):
@@ -527,4 +670,7 @@ class odwolanie:
             }
             if len(tytuly) == 1:
                 _wpisz(zamowienie, "tytul", tytuly.pop())
-            _wpisz(zamowienie, "numer_ted", _numer_ted(tekst_naglowka))
+            opis = _opis_postepowania(tekst_naglowka)
+            if opis:
+                _wpisz(zamowienie, "numer_ted", _numer_ted(opis))
+                _wpisz(zamowienie, "numer_postepowania", _numer_referencyjny(opis))

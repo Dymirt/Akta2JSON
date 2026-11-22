@@ -175,9 +175,11 @@ def format_result(value, formatters, path=(), *, mapping=None):
     formatter = formatters.get(path) if formatters else None
     if isinstance(value, str):
         restored = MARKER.sub(lambda marker: mapping[marker[0]], value) if mapping is not None else value
-        return normalize_spaces(formatter(restored) if formatter else restored)
+        if formatter:
+            return normalize_spaces(formatter(restored)) or None
+        return normalize_spaces(restored)
     if formatter and type(value) is int:
-        return formatter(str(value))
+        return formatter(str(value)) or None
     return value
 
 

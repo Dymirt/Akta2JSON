@@ -2,6 +2,7 @@
 // @normalize mocodawca.*.data.krs digits
 // @normalize mocodawca.*.data.nip digits
 // @normalize pelnomocnicy.*.pesel digits
+// @normalize pelnomocnicy.*.imie_nazwisko given-name-initial
 {
   // Mocodawca – podmiot udzielający pełnomocnictwa. może być więcej niż 1 (konsorcjum wspólnie)
   // Zachowaj kolejność mocodawców z dokumentu.
@@ -37,10 +38,12 @@
     }
   ],
 // @singleton pelnomocnicy pełnomocnik
-  // Osoby otrzymujące pełnomocnictwo.
+  // Zapisz osobno każdą osobę otrzymującą umocowanie, w kolejności udzielenia.
+  // Kilka nazwisk wymienionych w jednym zdaniu oznacza kilka rekordów. Podpis przyjęcia tej samej osoby nie tworzy kolejnego rekordu.
+  // Odróżnij odbiorców umocowania od osób podpisujących w imieniu mocodawcy.
   "pelnomocnicy": [
     {
-      // Imię i nazwisko pełnomocnika w mianowniku.
+      // Imię i nazwisko jednej osoby w mianowniku, bez tytułu zawodowego, numeru wpisu i opisu funkcji.
       "imie_nazwisko": "Krystyna Mazowiecka",
       // Wybierz PESEL tej osoby. Numer wpisu zawodowego ma własną etykietę.
       // Skopiuj wartość po etykiecie „PESEL” przy tej osobie. Jeśli brak tej etykiety, zwróć null.

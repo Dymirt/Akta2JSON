@@ -10,7 +10,7 @@
 {
   "przelew_bankowy": {
     // Data operacji lub realizacji przelewu w formacie YYYY-MM-DD.
-    // W wyciągu wybierz datę operacji. W potwierdzeniu wykonanego zlecenia uwzględnij „Zlecona data wykonania”. Księgowanie, podpis i wydruk mogą mieć inne daty.
+    // W wyciągu wybierz „Data operacji”, nawet gdy obok widnieje inna „Data waluty”. W potwierdzeniu zlecenia o statusie „wykonane” wybierz datę realizacji. Gdy jedyną datą wykonania w sekcji zlecenia jest „Zlecona data wykonania”, odczytaj ją z tej sekcji. Księgowanie, podpis i wydruk mogą mieć inne daty. Przy samym zleceniu oczekującym data planowana nie potwierdza wykonania.
     "data_operacji": "2025-10-09",
     // Kwota przelewu w PLN jako liczba dodatnia, także gdy wyciąg pokazuje obciążenie rachunku z minusem.
     "kwota": 10000.00,
@@ -18,9 +18,9 @@
     "na_rachunek": "60101010100081362231000000",
     // Numer referencyjny transakcji lub identyfikator operacji. Przy braku numeru transakcji zwróć null. Numer klienta i numer zamówienia mają odrębne znaczenie.
     "numer_transakcji": null,
-    // Przepisz pełną treść pola „Tytuł”, „Tytuł przelewu”, „Tytułem”, „Opis” lub „Szczegóły płatności” znak w znak. W tabeli odczytaj kolejne wiersze tej samej komórki. Zakończ przed stopką banku.
+    // Przepisz pełną treść pola „Tytuł”, „Tytuł przelewu”, „Tytułem”, „Opis” lub „Szczegóły płatności”. „Opis” może też nagłówkować całą sekcję z rachunkiem i odbiorcą. Wówczas odczytaj wydzieloną komórkę „Tytuł”. Połącz kolejne wiersze jej treści spacją, zachowując podane identyfikatory i interpunkcję. Koniec komórki wyznacza następne pole (np. typ transakcji, kwota, źródło transakcji) albo stopka banku. Numer referencyjny dołącz tylko wtedy, gdy widnieje również w treści tytułu.
     "tytul": "WPIS OD ODW., ZAM: ZESPÓŁ SZKÓŁ CENTRUM KSZTAŁCENIA ROLNICZEGO IM. KEN W HENRYKOWIE, ZSCKR/822/2025, CEN2604016344389",
-    // Rachunek nadawcy lub zleceniodawcy jako tekst. Zastosuj tę samą zasadę zachowania prefiksu kraju i liter rachunku co dla na_rachunek.
+    // Rachunek nadawcy lub zleceniodawcy jako tekst. W formularzu „Przelew z rachunku – Szczegóły transakcji” główny „Numer rachunku” należy do nadawcy. Osobny „Rachunek odbiorcy” w szczegółach odpowiada na_rachunek. Przy tabelach dwukolumnowych przyporządkuj numery według nagłówków obu stron przelewu. Zachowaj prefiks i litery według tej samej zasady co dla na_rachunek.
     "z_rachunku": "508020546000005888744244"
   }
 }

@@ -68,11 +68,20 @@ def _normalize_date(value):
             return datetime.strptime(text, date_format).date().isoformat()
         except ValueError:
             continue
-    return value
+    return ""
 
 
 def normalize_spaces(value: str) -> str:
     return " ".join(value.split())
+
+
+def _given_name_initial(value: str) -> str:
+    text = normalize_spaces(value)
+    first, _, rest = text.partition(" ")
+    if (len(first) >= 3 and first.isalpha() and first.islower() and rest[:1].isupper()
+            and first not in {"van", "von", "del", "radca", "adwokat", "mecenas", "pani", "pan"}):
+        return first[:1].upper() + text[1:]
+    return text
 
 
 def _normalize_transfer_title(value: str) -> str:
@@ -91,6 +100,7 @@ FORMATTERS: dict[str, Formatter] = {
     "compact-upper": lambda value: "".join(value.split()).upper(),
     "date-iso": _normalize_date,
     "digits": lambda value: re.sub(r"\D", "", value),
+    "given-name-initial": _given_name_initial,
     "spaces": normalize_spaces,
     "ted": _normalize_ted,
     "transfer-title": _normalize_transfer_title,

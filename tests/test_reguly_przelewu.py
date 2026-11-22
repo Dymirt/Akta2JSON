@@ -255,3 +255,48 @@ class RegulyPrzelewuTest(unittest.TestCase):
         self.assertEqual(self.dane["data_operacji"], "2026-03-17")
         self.assertEqual(self.dane["z_rachunku"], "00111111112222222233333333")
         self.assertEqual(self.dane["na_rachunek"], "44555555556666666677777777")
+
+    def test_data_zlecona_wymaga_wykonania_i_zgodnego_dnia_potwierdzenia(self):
+        tekst = ("Szczegóły zlecenia\nTyp zlecenia Przelew krajowy\nStatus: wykonane\nDane zleceniodawcy\n"
+                 "Dane zlecenia\nZlecona data wykonania 08 05 2026\nData: 2026.05.08 12:10:00 CEST")
+        for niepewny in (tekst.replace("wykonane", "niewykonane"), tekst.replace("05.08", "05.09"),
+                         tekst.replace("Status: wykonane", "Status: oczekujące")):
+            self.dane["data_operacji"] = None
+            REGULA.zastosuj(niepewny, self.wynik)
+            self.assertIsNone(self.dane["data_operacji"])
+        REGULA.zastosuj(tekst, self.wynik)
+        self.assertEqual(self.dane["data_operacji"], "2026-05-08")
+
+    def test_szczegoly_wyjscia_z_rachunku_przypisuja_kolumny_do_rol(self):
+        numer = "DE89 3704 0044 0532 0130 00"
+        tekst = ("Przelew z rachunku: Szczegóły transakcji\nNumer rachunku\nData waluty\nData operacji\n"
+                 f"Opis\nTyp transakcji\n{numer}\n2026-05-09\n2026-05-08\n"
+                 "Rachunek odbiorcy:\n00 1234 5678 9012 3456 7890 1234\nPrzelew z rachunku\n-23,00 PLN")
+        REGULA.zastosuj(tekst, self.wynik)
+        self.assertEqual(self.dane["z_rachunku"], numer.replace(" ", ""))
+        self.assertEqual(self.dane["na_rachunek"], "00123456789012345678901234")
+        self.assertEqual(self.dane["data_operacji"], "2026-05-08")
+        self.assertEqual(self.dane["kwota"], 23)
+        for niepewny in (tekst.replace("z rachunku:", "na rachunek:"),
+                         tekst.replace(numer, numer + "\n" + numer)):
+            self.dane["z_rachunku"] = None
+            REGULA.zastosuj(niepewny, self.wynik)
+            self.assertIsNone(self.dane["z_rachunku"])
+
+    def test_tytul_w_sekcji_opis_i_rzeczywisty_koniec_komorki(self):
+        tekst = ("Przelew z rachunku: Szczegóły transakcji\nNumer rachunku 00 1234 5678 9012 3456 7890 1234\n"
+                 "Opis\nRachunek odbiorcy:\nGB82 WEST 1234 5698 7654 32\nTytuł:\nOpłata za\ndostawę\n"
+                 "Typ transakcji Przelew z rachunku\nKwota -23,00 PLN")
+        REGULA.zastosuj(tekst, self.wynik)
+        self.assertEqual(self.dane["tytul"], "Opłata za dostawę")
+        self.dane["tytul"] = None
+        REGULA.zastosuj(tekst.replace("dostawę\n", "Opłata: 5,00 PLN\n"), self.wynik)
+        self.assertIsNone(self.dane["tytul"])
+
+    def test_uszkodzona_etykieta_transakcji_wymaga_kolejnej_etykiety_zrodlo(self):
+        tekst = "Numer R-001\ntransakcji i .\nŹródło Bank"
+        REGULA.zastosuj(tekst, self.wynik)
+        self.assertEqual(self.dane["numer_transakcji"], "R-001")
+        self.dane["numer_transakcji"] = None
+        REGULA.zastosuj(tekst.replace("Źródło Bank", "Nazwa Bank"), self.wynik)
+        self.assertIsNone(self.dane["numer_transakcji"])

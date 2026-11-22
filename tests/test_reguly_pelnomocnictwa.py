@@ -108,6 +108,48 @@ class TestRegulyPelnomocnictwa(TestCase):
             "nazwa": "Firma Alfa S.A.", "krs": "0000000001", "nip": "0123456789", "typ": "osoba_prawna",
         })
 
+    def test_rozdziela_sklejonych_umocowanych_z_pesel_przy_jednej_osobie(self):
+        tekst = ("Udzielam pełnomocnictwa adw. Anna Lis, PESEL: 01234567890 (nr wpisu: KR-123), "
+                 "r. pr. Jan Nowak (nr wpisu: WA-124), do reprezentowania spółki.\n"
+                 "Mocodawca:\n........\nEwa Bąk")
+        wynik = {"pelnomocnicy": [{"imie_nazwisko": "Anna Lis Jan Nowak", "pesel": None}]}
+        self.regula(tekst, wynik)
+        self.regula(tekst, wynik)
+        self.assertEqual(wynik["pelnomocnicy"], [{"imie_nazwisko": "Anna Lis", "pesel": "01234567890"},
+                                                {"imie_nazwisko": "Jan Nowak", "pesel": None}])
+
+    def test_pelna_rubryka_pomija_podpisujacego_i_dodaje_druga_osobe(self):
+        tekst = ("Mocodawca:\nAnna Lis\nPEŁNOMOCNICY:\nr. pr. Adam Nowak\nnr wpisu: WA-123\n"
+                 "adw. Maria Kot\nnr wpisu: KR-124\nZakres umocowania:\ndo reprezentowania spółki.\nPodpisy:\nEwa Bąk")
+        osoba = {"imie_nazwisko": "Adam Nowak", "pesel": None}
+        for dokument, oczekiwani in (
+            (tekst, [osoba, {"imie_nazwisko": "Maria Kot", "pesel": None}]),
+            (tekst.replace("adw. Maria Kot", "asystent Maria Kot"), [osoba]),
+            (tekst.replace("Zakres umocowania:", "Inna treść:"), [osoba]),
+        ):
+            with self.subTest(dokument=dokument):
+                wynik = {"pelnomocnicy": [osoba.copy()]}
+                self.regula(dokument, wynik)
+                self.assertEqual(wynik["pelnomocnicy"], oczekiwani)
+
+    def test_nie_zastepuje_mianownika_odmienionym_nazwiskiem_ani_podpisem_mocodawcy(self):
+        osoba = {"imie_nazwisko": "Jan Nowak", "pesel": None}
+        dokument = "Udzielam pełnomocnictwa adw. Janowi Nowakowi (nr wpisu: WA-123) do reprezentowania spółki."
+        podpis = "\nMocodawca:\n........\nadw. Janowi Nowakowi"
+        for tekst in (dokument, dokument + podpis, dokument.replace("Udzielam", "Nie udzielam")):
+            wynik = {"pelnomocnicy": [osoba.copy()]}
+            self.regula(tekst, wynik)
+            self.assertEqual(wynik["pelnomocnicy"], [osoba])
+
+    def test_sprzeczne_nadania_lub_dodatkowy_pesel_wstrzymuja_zmiane(self):
+        tekst = "Ustanawiam pełnomocnikiem adw. Anna Lis (nr wpisu: KR-281) do reprezentowania spółki."
+        for dokument, pesel in ((tekst + " Udzielam pełnomocnictwa również innej osobie.", None),
+                                (tekst, "01234567890")):
+            stary = [{"imie_nazwisko": "adw. Anna Lis", "pesel": pesel}]
+            wynik = {"pelnomocnicy": deepcopy(stary)}
+            self.regula(dokument, wynik)
+            self.assertEqual(wynik["pelnomocnicy"], stary)
+
     def test_pomija_wielu_mocodawcow(self):
         self.wynik["mocodawca"].append({"data": {"nazwa": "Firma Beta S.A.", "nip": None}})
         przed = deepcopy(self.wynik)

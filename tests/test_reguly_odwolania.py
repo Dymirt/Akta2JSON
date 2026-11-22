@@ -117,6 +117,84 @@ class AppealRulesTest(unittest.TestCase):
                 self.rule(subject + tail, self.result)
                 self.assertEqual(pole["numer_ted"], "z ekstrakcji")
 
+    def test_numery_w_biezacej_rubryce_dotyczy(self):
+        poczatek = "Dotyczy: postępowania o udzielenie zamówienia publicznego, nr referencyjny:\n"
+        zapis = "DZP/ 81/2025, ogłoszenie w Dzienniku Urzędowym Unii Europejskiej nr 2025/85\n017-654321"
+        pola = {"numer_ted": None, "numer_postepowania": None}
+        self.rule(poczatek + zapis, {"ZamowieniePubliczne": pola})
+        self.assertEqual(pola, {"numer_ted": "654321-2025", "numer_postepowania": "DZP/81/2025"})
+        for inne in (zapis.replace("Urzędowym", "Urzqowym").replace("2025/85\n017-654321", "654321-2025"),
+                     zapis.replace("/85", "/5")):
+            pola["numer_ted"] = None
+            self.rule(poczatek + inne, {"ZamowieniePubliczne": pola})
+            self.assertEqual(pola["numer_ted"], "654321-2025")
+        for inne in (zapis + ", 222222-2025", zapis.replace("2025/85", "2025/99"),
+                     zapis.replace("017-654321", "017-65432"), zapis.replace("2025/85\n", "2025/85\f"),
+                     zapis + "\nOgłoszenie historyczne", zapis + ", TED: inny"):
+            pola["numer_ted"] = None
+            self.rule(poczatek + inne, {"ZamowieniePubliczne": pola})
+            self.assertIsNone(pola["numer_ted"])
+        for numer in ("DZP/81/2025 (inne postępowanie)", "DZP/81/2025; nr referencyjny: AB/44",
+                      "DZP/81/\f2025", "DZP/81 /z innego wiersza"):
+            pola["numer_postepowania"] = None
+            self.rule(poczatek + numer, {"ZamowieniePubliczne": pola})
+            self.assertIsNone(pola["numer_postepowania"])
+
+    def test_lider_konsorcjum_ma_wlasne_rejestry(self):
+        lider = "KRS: 0000000001, NIP: 1234567890, REGON: 123456789"
+        partner = "2) Partner Konsorcjum:\nInna sp. k.\nKRS: 0000000002, NIP: 2222222222, REGON: 222222222"
+        poczatek = "Odwołujący: Konsorcjum wykonawców:\n"
+        suffix = "\nDziałając w imieniu Odwołującego — Firma sp. k. (dalej: „Odwołujący”), wnoszę odwołanie."
+        firma = {"nazwa": None, "krs": None, "nip": None, "regon": None}
+        for naglowek in ("1) Lider Konsorcjum:\nFirma sp. k.", "1) Firma Sp. k. (Lider Konsorcjum)"):
+            osoba = dict(firma)
+            self.rule(poczatek + naglowek + "\n" + lider + "\n" + partner + suffix, {"Odwolujacy": [osoba]})
+            self.assertEqual(osoba, {"nazwa": "Firma sp. k.", "krs": "0000000001", "nip": "1234567890", "regon": "123456789"})
+        naglowek = poczatek + "1) Lider Konsorcjum:\nFirma sp. k.\n"
+        for zrodlo in (lider.replace("1234567890", "brak"), lider + "\nREGON: 111111111",
+                       lider.replace("1234567890", "11111111111"), lider + "\f"):
+            osoba = dict(firma)
+            self.rule(naglowek + zrodlo + "\n" + partner, {"Odwolujacy": [osoba]})
+            self.assertEqual(osoba, firma)
+        osoby = [dict(firma, krs="0000000001", nip="1234567890", pelnomocnik="A"), dict(firma, krs="0000000002", pelnomocnik="B")]
+        self.rule(naglowek + lider + "\n" + partner, {"Odwolujacy": osoby})
+        self.assertEqual(len(osoby), 1)
+        self.assertEqual(osoby[0]["pelnomocnik"], "A")
+        niejednoznaczne = [dict(firma, pelnomocnik="A"), dict(firma, pelnomocnik="B")]
+        przed = deepcopy(niejednoznaczne)
+        self.rule(naglowek + lider + "\n" + partner, {"Odwolujacy": niejednoznaczne})
+        self.assertEqual(niejednoznaczne, przed)
+        wspolna_reprezentacja = [dict(firma, pelnomocnik="A"), dict(firma, pelnomocnik="A")]
+        self.rule(naglowek + lider + "\n" + partner, {"Odwolujacy": wspolna_reprezentacja})
+        self.assertEqual(len(wspolna_reprezentacja), 1)
+        self.assertEqual(wspolna_reprezentacja[0]["krs"], "0000000001")
+
+    def test_wielowierszowa_nazwa_lidera_wymaga_potwierdzenia(self):
+        tekst = ("Odwołujący: Konsorcjum wykonawców:\n1) Lider Konsorcjum:\n"
+                 "Przedsiębiorstwo Inżynieryjne\nAlfa sp. z o.o.\nul. Długa 3\n"
+                 "KRS: 0000000001, NIP: 1234567890, REGON: 123456789\n2) Partner Konsorcjum:\nBeta S.A.")
+        pelna = "Przedsiębiorstwo Inżynieryjne Alfa sp. z o.o."
+        for nazwa, oczekiwany_krs in ((pelna, "0000000001"), ("Inna nazwa", None)):
+            with self.subTest(nazwa=nazwa):
+                osoba = {"nazwa": nazwa, "krs": None}
+                self.rule(tekst, {"Odwolujacy": [osoba]})
+                self.assertEqual(osoba, {"nazwa": nazwa, "krs": oczekiwany_krs})
+
+    def test_pelny_naglowek_od_adresata_bez_datownika(self):
+        tekst = ("Prezes Krajowej Izby Odwoławczej\nOdwołujący: Spółka A\nZamawiający: Spółka B\n"
+                 "O D W O Ł A N I E\nDziałając w imieniu spółki, wnoszę odwołanie.")
+        dane = {"data": "2025-05-05"}
+        self.rule(tekst, {"OdwolanieKIO": dane})
+        self.assertIsNone(dane["data"])
+        dane["data"] = "2025-05-05"
+        self.rule(tekst.replace("O D W", "Data pisma: 5 V 2025\nO D W"), {"OdwolanieKIO": dane})
+        self.assertEqual(dane["data"], "2025-05-05")
+        for datownik in ("20.XI.2025", "20-XI-2025", "20 / XI / 2025"):
+            with self.subTest(datownik=datownik):
+                dane["data"] = "2025-11-20"
+                self.rule(tekst.replace("O D W", f"Warszawa, {datownik} r.\nO D W"), {"OdwolanieKIO": dane})
+                self.assertEqual(dane["data"], "2025-11-20")
+
     def test_representative_requires_unambiguous_party_and_contact_designation(self):
         source = (
             "Odwołujący:\nFirma A\nreprezentowana przez: r. pr. Joanna Nowak, adw. Jan Nowicki\n"

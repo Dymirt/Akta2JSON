@@ -32,6 +32,83 @@ _OPIS_OSOBY = re.compile(
     rf"(?:(?:{_FUNKCJA.pattern})(?:\s+[–—-]\s+lider konsorcjum)?"
     rf"|(?:adwokat|radca prawny)(?:[,.]\s*{_WPIS})?|{_WPIS})[.,]?", re.I,
 )
+_NADANIE = re.compile(
+    r"\b(?:(?:ustanawiam(?:y)?|ustanawia(?:ją)?) pełnomocnikiem|upoważniam(?:y)?|upoważnia(?:ją)?|"
+    r"(?:udzielam(?:y)?|udziela(?:ją)?) pełnomocnictwa)\b\s*:?\s*", re.I,
+)
+_KONIEC_NADANIA = re.compile(r",? do reprezentowania\b|\. (?=§ \d+\.|pełnomocnictwo (?:udzielone|obejmuje)\b)", re.I)
+_WPIS_W_WYKAZIE = r"(?i:(?:nr\.?|numer) wpisu(?: na listę)?\s*:?\s*)(?:[A-ZĄĆĘŁŃÓŚŹŻ]{1,10}[- /]+){0,3}[0-9]{2,8}(?:/[0-9]{2,4})?"
+_UMOCOWANY = re.compile(
+    rf"(?i:{_TYTUL_PELNOMOCNIKA.pattern})(?P<osoba>{_OSOBA.pattern})"
+    rf"(?:,\s*(?i:PESEL)\s*:?\s*(?P<pesel>[0-9]{{11}}))?(?:[,;]?\s+|(?=\())"
+    rf"(?P<nawias>\()?{_WPIS_W_WYKAZIE}(?(nawias)\))"
+)
+
+
+def _wykaz_umocowanych(tekst, wynik):
+    obecni = wynik.get("pelnomocnicy")
+    if not isinstance(obecni, list) or not (obecni or wynik.get("mocodawca")):
+        return
+    if any(not isinstance(r, dict) or r.keys() != {"imie_nazwisko", "pesel"}
+           or r["imie_nazwisko"] is not None and not isinstance(r["imie_nazwisko"], str) for r in obecni):
+        return
+    wiersze = [" ".join(w.split()) for w in tekst.splitlines() if w.strip()]
+    calosc = " ".join(wiersze)
+    nadania = list(_NADANIE.finditer(calosc))
+    if len(nadania) > 1:
+        return
+    if nadania and _TYTUL_PELNOMOCNIKA.match(calosc, nadania[0].end()):
+        poczatek = nadania[0]
+        if re.search(r"\bnie\s+$", calosc[:poczatek.start()], re.I):
+            return
+        koniec = _KONIEC_NADANIA.search(calosc, poczatek.end())
+        if not koniec:
+            return
+        wykaz = calosc[poczatek.end():koniec.start()]
+        rubryka = False
+    else:
+        naglowki = [i for i, w in enumerate(wiersze) if w.casefold().rstrip(":") in {"pełnomocnik", "pełnomocnicy"}]
+        if len(naglowki) != 1:
+            return
+        i = naglowki[0] + 1
+        koniec = next((j for j in range(i, len(wiersze))
+                       if wiersze[j].replace(" ", "").casefold().rstrip(":") in
+                       {"pełnomocnictwo", "postępowanie", "zamawiający", "zakres", "zakresumocowania"}), None)
+        if koniec is None:
+            return
+        wykaz = " ".join(wiersze[i:koniec])
+        rubryka = True
+
+    wpisy = re.split(r"(?:[,;]\s*|\s+(?:oraz\s+)?)(?=(?:adw\.|r\.\s*pr\.)\s)", wykaz, flags=re.I)
+    osoby = []
+    for wpis in wpisy:
+        m = _UMOCOWANY.fullmatch(wpis)
+        if not m or not _czy_nazwisko(m["osoba"]):
+            return
+        osoby.append({"imie_nazwisko": m["osoba"], "pesel": m["pesel"]})
+    nazwy = [r["imie_nazwisko"] for r in osoby]
+    if len(set(nazwy)) != len(nazwy):
+        return
+    # Numer PESEL z innej rubryki może być poprawnie powiązany przez model.
+    if any(r["pesel"] and r["pesel"] not in {o["pesel"] for o in osoby} for r in obecni):
+        return
+    if not rubryka:
+        # Forma po czasowniku może być zależna. Potwierdź ją w podpisach przyjęcia
+        # albo we wszystkich imiennych polach modelu (również gdy skleił dwa wpisy).
+        przyjecia = [i for i, w in enumerate(wiersze) if w.casefold() == "pełnomocnictwo przyjmuję:"]
+        podpisy = []
+        if len(przyjecia) == 1:
+            for wiersz in wiersze[przyjecia[0] + 1:]:
+                if not _LINIA_PODPISU.fullmatch(wiersz):
+                    tytul = _TYTUL_PELNOMOCNIKA.match(wiersz)
+                    podpisy.append(wiersz[tytul.end():] if tytul else None)
+        if podpisy != nazwy:
+            dotychczas = [" ".join((r["imie_nazwisko"] or "").split()) for r in obecni]
+            pasuje = [[bool(re.search(r"(?<![\w-])" + re.escape(n) + r"(?![\w-])", d))
+                       for n in nazwy] for d in dotychczas]
+            if not pasuje or not all(map(any, pasuje)) or not all(map(any, zip(*pasuje))):
+                return
+    wynik["pelnomocnicy"] = osoby
 
 
 def _czy_nazwisko(osoba):
@@ -236,3 +313,4 @@ class pelnomocnictwo:
             _podpisy(tekst, mocodawcy, jedyny or z_deklaracji)
             _popraw_funkcje_przy_podpisie(tekst, mocodawcy, jedyny)
         _oddziel_funkcje_od_nazwisk(" ".join(tekst.split()), wynik)
+        _wykaz_umocowanych(tekst, wynik)
