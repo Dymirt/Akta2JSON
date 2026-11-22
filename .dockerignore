@@ -1,0 +1,6 @@
+*
+!Dockerfile
+!requirements.txt
+!odwolania/
+!odwolania/**
+**/__pycache__/

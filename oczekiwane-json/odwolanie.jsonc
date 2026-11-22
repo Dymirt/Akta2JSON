@@ -1,0 +1,71 @@
+// @match (?:[*|] )?odwołanie(?: do krajowej izby odwoławczej)?
+// @normalize OdwolanieKIO.data date-iso
+// @normalize OdwolanieKIO.czynnosc_dzien date-iso
+// @normalize ZamowieniePubliczne.numer_bzp compact-upper
+// @normalize ZamowieniePubliczne.numer_ted ted
+{
+  "OdwolanieKIO": {
+    "data": "2025-10-13", // Data pisma z datownika pierwszej strony (YYYY-MM-DD). Gdy nagłówek nie zawiera daty pisma, wpisz null. Data czynności lub jej doręczenia należy do czynnosc_dzien.
+    "czynnosc_dzien": "2025-10-01", // Data czynności uruchamiającej bieg terminu odwołania dla pierwszego zarzutu (ISO YYYY-MM-DD). Datę odczytaj z opisu tego samego działania lub zawiadomienia o nim. Jeśli dla pierwszego zarzutu jej brak, zwróć null.
+    "czynnosc_powod_id": 4,
+	//Identyfikator powodu odwołania jako liczba całkowita 1-12 (bez zera wiodącego), ustalana WYŁĄCZNIE na podstawie pierwszego zarzutu:
+	// Jeśli „Zarzut nr 1” nazywa czynność, przypisz kod temu sformułowaniu. Potwierdź je w punkcie 1) wykazu zaskarżonych czynności, jeśli taki wykaz występuje. Gdy zarzut opisuje jedynie naruszenie, ustal, jakiego działania dotyczy.
+	// „Zaniechanie odrzucenia oferty” to kod 7, także gdy zamawiający wybrał tę ofertę. Udzielenie odpowiedzi na pytania i wyjaśnień treści SWZ to kod 6, także gdy ich skutkiem była zmiana wymagań.
+	// 1=Decyzja o odrzuceniu oferty,
+	// 2=Ogłoszenie wyboru oferty,
+	// 3=Decyzja o wykluczeniu wykonawcy,
+	// 4=Publikacja specyfikacji warunków zamówienia (SWZ),
+	// 5=Modyfikacja treści SWZ,
+	// 6=Odpowiedzi/wyjaśnienia do SWZ,
+	// 7=Zaniechanie odrzucenia oferty,
+	// 8=Zaniechanie wykluczenia wykonawcy,
+	// 9=Decyzja o unieważnieniu postępowania,
+	// 10=Zaniechanie unieważnienia postępowania,
+	// 11=Opis przedmiotu zamówienia (OPZ),
+	// 12=Projektowane postanowienia umowy.
+    "czynnosc_opis": "Publikacja specyfikacji warunków zamówienia (SWZ)", // Wartość słownikowa. Dozwolona jest wyłącznie kanoniczna nazwa przypisana wyżej do wybranego czynnosc_powod_id. Nie cytuj zdania z odwołania. Brak daty nie wyklucza ustalenia kodu i nazwy.
+    // Miejscowość przypisz dacie wniesienia. Adres KIO należy do adresata pisma.
+    // Przepisz miejscowość dokładnie z tego samego wiersza co data wniesienia.
+    // Jeżeli przy dacie nie ma miejscowości, zwróć null.
+    "miejscowosc": "Pruszków" // Miejscowość z nagłówka pierwszej strony, z linii typu: 'X, dnia ...' albo 'X DD.MM.RRRR'.
+  },
+  "Odwolujacy": [
+    {
+      // Identyfikatory odczytaj z bloku odwołującego, a przy konsorcjum z bloku lidera. Rozpisz wiersz z kilkoma identyfikatorami na osobne pola według ich etykiet. Indeksy znaczników mogą się różnić.
+      "krs": "0000054588", // Skopiuj [KRS_…] lub jawny dziesięciocyfrowy numer KRS tej strony jako tekst. Jeśli strona ma tylko NIP i REGON, wpisz null. Nazwa rejestru po „wpisany do” nie jest numerem KRS.
+      "nazwa": "STRABAG Sp. z o.o.", // Pełna nazwa podmiotu opisanego w tekście jako Odwołujący (sekcja 'Odwołujący' / wykonawca wnoszący odwołanie). Jeśli występuje konsorcjum, podaj nazwę Lidera konsorcjum.
+      "nip": null, // Skopiuj wartość po „NIP:” w bloku tej strony, w tym znacznik [NIP_…]. Jeśli brak, wpisz null.
+      "regon": null, // Skopiuj wartość po „REGON:” w bloku tej strony, w tym znacznik [REGON_…]. Jeśli brak, wpisz null.
+      "przez-pelnomocnika": 1, //1- tak, 0- nie
+      "pelnomocnik": {
+        // Odczytaj osobę, kancelarię i mail z tego samego bloku reprezentacji. Wspólny pełnomocnik konsorcjum bywa wymieniony po ostatnim partnerze. Jego dane wpisz do rekordu lidera.
+        // Jeżeli wymieniono kilku pełnomocników bez wskazania osoby do kontaktu, wybierz pierwszego.
+        "imie_nazwisko": "Marcel Kielce", // Imię i nazwisko w mianowniku, bez tytułu zawodowego. Jeśli ta sama osoba występuje w kilku przypadkach, wybierz znacznik z podpisu lub imiennej rubryki w mianowniku.
+        "nazwa": "Kancelaria Radców Prawnych", // Z rubryki „adres do korespondencji” pełnomocnika przepisz odbiorcę przed ulicą. Gdy rubryka zaczyna się od [PODMIOT_…], po którym następuje przecinek i ulica, do Odwolujacy[].pelnomocnik.nazwa skopiuj wyłącznie ten jeden znacznik. Zakończ przed przecinkiem. Znaczniki ULICA, KOD_POCZTOWY i ADRES należą do adresu. Sam adres bez nazwy daje null.
+        "mail": "info@prawnik.xy" // adres email kontaktowy do pełnomocnika
+      }
+    }
+  ],
+  "Zamawiajacy": [
+    // Z sekcji zamawiających przepisz w kolejności dokumentu po jednym obiekcie dla każdego wymienionego zamawiającego.
+    // Przy wspólnym zamówieniu uwzględnij zarówno lidera, jak i wszystkich partnerów. Przed zwrotem JSON-u sprawdź, czy każda pozycja ma własny rekord.
+    // Do danej nazwy przypisz wyłącznie KRS, NIP i REGON podane dla tego podmiotu. Gdy jego numeru brak, wpisz null.
+    // Odróżnij partnerów zamawiającego od członków konsorcjum wykonawców wymienionych w sekcji odwołującego.
+    {
+      "krs": null, // KRS Zamawiającego (jeśli jawnie podany przy Zamawiającym).
+      "nazwa": "Filharmonia Pomorska im. Ignacego Jana Paderewskiego", // Pełna nazwa podmiotu opisanego w tekście jako Zamawiający (sekcja 'Zamawiający').
+      "nip": "5540240549", // NIP Zamawiającego (jeśli jawnie podany przy Zamawiającym).
+      "regon": "000279077", // REGON Zamawiającego (jeśli jawnie podany przy Zamawiającym).
+      "prowadzacy_postepowanie": null // Jeden zamawiający lub brak informacji o wspólnym zamówieniu: null. Przy wielu zamawiających: 1 dla wskazanego prowadzącego lub lidera postępowania, 0 dla pozostałych. Rola lidera konsorcjum odwołującego nie wyznacza tego pola.
+    }
+  ],
+  "ZamowieniePubliczne": {
+    // Dla BZP i TED osobno sprawdź ogłoszenia w rubryce „dotyczy” lub przy numerze referencyjnym bieżącego postępowania. Pomiń numery przywołane dla poprzednich lub porównywanych postępowań. Dla rejestru bez numeru dotyczącego bieżącego postępowania wpisz null.
+    "numer_bzp": null, // Skopiuj [NR_BZP_…] bieżącego ogłoszenia, również gdy obok podano TED. Kilka znaczników jednego numeru połącz spacją, bez dopisywania roku lub prefiksu. W jawnym numerze zachowaj ewentualny sufiks korekty.
+    "numer_postepowania": null, // Numer referencyjny/nr postępowania/numer wewnętrzny (ID po etykiecie), np. 'ZP.039.2025', 'DZP.260.11.2025', 'V.ROZ.2710.125.2025', 'ZSCKR/822/2025'.
+    "numer_ted": "641651-2025", // Skopiuj [NR_TED_…] bieżącego ogłoszenia. Kilka znaczników jednego numeru połącz spacją. Jawny numer z dokumentu może mieć format NNNNNN-YYYY lub YYYY/S ###-NNNNNN. Jeśli dokument podaje tylko BZP, wpisz tu null. Cyfry przykładowe we wzorcu nie stanowią źródła.
+    // Zachowaj kolejność fragmentów tytułu z jednego wystąpienia w opisie postępowania.
+    "tytul": "Wykonanie robót budowlanych oraz dostawa i montaż wyposażenia w ramach zadania, polegającego na przebudowie i rozbudowie Filharmonii Pomorskiej w Bydgoszczy" // Tytuł zamówienia lub postępowania, jeśli występuje w dokumencie.
+  }
+  // Przed zwróceniem JSON-u porównaj obiekt ZamowieniePubliczne z rubryką „dotyczy”. Jeśli rubryka zawiera znacznik NR_BZP bieżącego ogłoszenia, a numer_bzp pozostał null, wpisz do tego pola znaleziony znacznik wraz z ewentualnym dalszym fragmentem tego samego numeru. Zasada dotyczy także rubryk zawierających oba ogłoszenia. Polecenie programu, aby wpisać null do numer_ted, dotyczy wyłącznie numer_ted.
+}

@@ -1,0 +1,32 @@
+name: CI
+
+"on":
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Sprawdź konfigurację Compose
+        run: docker compose config -q
+      - name: Zbuduj obraz CLI
+        run: docker compose build cli
+      - name: Uruchom testy offline
+        run: |
+          docker run --rm --network none \
+            --mount "type=bind,src=$PWD/tests,dst=/app/tests,readonly" \
+            --mount "type=bind,src=$PWD/oczekiwane-json,dst=/app/oczekiwane-json,readonly" \
+            --entrypoint sh hacknation2026-cli -ec '
+              python -c "import pl_core_news_md"
+              python -m unittest discover -s tests -v
+            '

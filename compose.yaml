@@ -1,0 +1,50 @@
+services:
+  cli:
+    build: .
+    image: hacknation2026-cli
+    network_mode: none
+    user: "${ODWOLANIA_UID:-1000}:${ODWOLANIA_GID:-1000}"
+    volumes:
+      - type: bind
+        source: "${ODWOLANIA_INPUT:-./input}"
+        target: /app/input
+        read_only: true
+      - type: bind
+        source: "${ODWOLANIA_OUTPUT:-./output}"
+        target: /app/output
+  llm:
+    image: hacknation2026-cli
+    pull_policy: never
+    command: ["extract"]
+    user: "${ODWOLANIA_UID:-1000}:${ODWOLANIA_GID:-1000}"
+    environment:
+      - MISTRAL_API_KEY
+      - MISTRAL_BASE_URL
+      - MISTRAL_MODEL
+    volumes:
+      - type: bind
+        source: "${ODWOLANIA_OUTPUT:-./output}"
+        target: /app/output
+        read_only: true
+      - type: bind
+        source: "${ODWOLANIA_TEMPLATES:-./oczekiwane-json}"
+        target: /app/oczekiwane-json
+        read_only: true
+  pipeline:
+    extends:
+      service: llm
+    cpus: 2.0
+    environment:
+      OPENBLAS_NUM_THREADS: "1"
+      OMP_NUM_THREADS: "1"
+    entrypoint: ["python", "-m", "odwolania", "pipeline"]
+    command: []
+    volumes:
+      - type: bind
+        source: "${ODWOLANIA_INPUT:-./input}"
+        target: /app/input
+        read_only: true
+      - type: bind
+        source: "${ODWOLANIA_OUTPUT:-./output}"
+        target: /app/output
+        read_only: false

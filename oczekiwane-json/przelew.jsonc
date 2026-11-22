@@ -1,0 +1,26 @@
+// @match (?:dotyczy: *)?(?:polecenie przelewu|dowód wykonania przelewu|potwierdzenie(?: wykonania| realizacji(?: polecenia)?)? (?:przelewu(?: krajowego)?|transakcji|operacji bankowej))
+// @match typ zlecenia[ :|]+przelew krajowy
+// @match (?:\w? ?[*|] )?przelew z rachunku[ :|–—-]+szczegóły transakcji
+// @match typ przelewu[ :|]+przel[eę]w złotowy(?: na rachunek (?:obcy|własny))?(?:,? elixir)?
+// @match (?:data operacji[ .:|]+)?przelew eli[xk]ir[ –—-]+online +[-−]?[\d ]+[.,]\d{2} (?:pln|zł)
+// @normalize przelew_bankowy.data_operacji date-iso
+// @normalize przelew_bankowy.na_rachunek bank-account
+// @normalize przelew_bankowy.z_rachunku bank-account
+// @normalize przelew_bankowy.tytul transfer-title
+{
+  "przelew_bankowy": {
+    // Data operacji lub realizacji przelewu w formacie YYYY-MM-DD.
+    // W wyciągu wybierz datę operacji. W potwierdzeniu wykonanego zlecenia uwzględnij „Zlecona data wykonania”. Księgowanie, podpis i wydruk mogą mieć inne daty.
+    "data_operacji": "2025-10-09",
+    // Kwota przelewu w PLN jako liczba dodatnia, także gdy wyciąg pokazuje obciążenie rachunku z minusem.
+    "kwota": 10000.00,
+    // Rachunek odbiorcy lub beneficjenta jako tekst. W obu polach rachunków zachowaj wszystkie litery, cyfry i zera wiodące z dokumentu. Kod kraju (np. PL) przepisz tylko wtedy, gdy go wydrukowano, również gdy stoi osobno przed znacznikiem. Połącz fragmenty rachunku rozbite na wiersze lub znaczniki. Program usunie białe znaki po odtworzeniu wartości.
+    "na_rachunek": "60101010100081362231000000",
+    // Numer referencyjny transakcji lub identyfikator operacji. Przy braku numeru transakcji zwróć null. Numer klienta i numer zamówienia mają odrębne znaczenie.
+    "numer_transakcji": null,
+    // Przepisz pełną treść pola „Tytuł”, „Tytuł przelewu”, „Tytułem”, „Opis” lub „Szczegóły płatności” znak w znak. W tabeli odczytaj kolejne wiersze tej samej komórki. Zakończ przed stopką banku.
+    "tytul": "WPIS OD ODW., ZAM: ZESPÓŁ SZKÓŁ CENTRUM KSZTAŁCENIA ROLNICZEGO IM. KEN W HENRYKOWIE, ZSCKR/822/2025, CEN2604016344389",
+    // Rachunek nadawcy lub zleceniodawcy jako tekst. Zastosuj tę samą zasadę zachowania prefiksu kraju i liter rachunku co dla na_rachunek.
+    "z_rachunku": "508020546000005888744244"
+  }
+}

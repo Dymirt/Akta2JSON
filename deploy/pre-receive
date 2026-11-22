@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# Odwolania2JSON deployment hook
+set -euo pipefail
+
+# Git can reject another ref after update has activated main. Accept only
+# single-ref transactions so the decision on main stands on its own.
+read -r old new ref
+if [[ "$ref" != refs/heads/main || "$new" =~ ^0+$ ]] || read -r _; then
+    echo 'Serwer przyjmuje wyłącznie aktualizację jednej gałęzi main.' >&2
+    exit 1
+fi

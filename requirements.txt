@@ -1,0 +1,7 @@
+presidio-analyzer==2.2.366
+mistralai==2.10.1
+httpx==0.28.1
+spacy==3.8.18
+PyMuPDF==1.28.2
+pytesseract==0.3.13
+pl_core_news_md @ https://github.com/explosion/spacy-models/releases/download/pl_core_news_md-3.8.0/pl_core_news_md-3.8.0-py3-none-any.whl#sha256=4f433a556880c0b7ef01970e7c612c0e30103b893e6d26ed54672d8e056ad9b1

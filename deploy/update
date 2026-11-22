@@ -1,0 +1,114 @@
+#!/usr/bin/env bash
+# Odwolania2JSON deployment hook
+set -euo pipefail
+
+ref=$1
+old=$2
+sha=$3
+[[ "$ref" == refs/heads/main && "$sha" =~ ^[0-9a-f]{40,64}$ && ! "$sha" =~ ^0+$ ]]
+repo=$(git rev-parse --absolute-git-dir)
+solution=$(git config --get deploy.solutionRoot)
+releases="$solution/.releases"
+release="$releases/$sha"
+image="hacknation2026-cli:$sha"
+exec 9>"$repo/deploy.lock"
+flock 9
+cutoff=$(git config --get deploy.cutoffUnix)
+before_cutoff() {
+    if [[ ! "$cutoff" =~ ^[0-9]+$ ]] || (( $(date +%s) >= cutoff )); then
+        echo 'Upłynął termin wdrożeń na VM.' >&2
+        return 1
+    fi
+}
+before_cutoff
+
+main=$(git rev-parse --verify refs/heads/main 2>/dev/null || true)
+if [[ "$old" =~ ^0+$ ]]; then
+    [[ -z "$main" ]]
+else
+    [[ "$main" == "$old" ]] && git merge-base --is-ancestor "$old" "$sha" || {
+        echo 'Nieaktualny push lub rozbieżna historia main.' >&2
+        exit 1
+    }
+fi
+active=$(readlink "$releases/current" || true)
+if [[ "$active" == "$sha" ]]; then
+    # A previous receive disconnected after activation, before Git wrote main.
+    exit 0
+fi
+if [[ "$active" != "$main" ]]; then
+    echo 'Trwa inny push lub poprzednia transakcja Git wymaga ponowienia.' >&2
+    exit 1
+fi
+
+umask 022
+mkdir -p "$releases"
+sources=(RUN.md README.md USTALENIA-UZP.md Dockerfile .dockerignore compose.yaml requirements.txt odwolania oczekiwane-json tests deploy)
+for name in "${sources[@]}"; do
+    target=".releases/current/$name"
+    [[ "$name" != compose.yaml ]] || target='.releases/current/compose.release.yaml'
+    if [[ -e "$solution/$name" || -L "$solution/$name" ]]; then
+        [[ "$(readlink "$solution/$name" || true)" == "$target" ]] || {
+            echo "Istnieje niezależny plik $solution/$name" >&2
+            exit 1
+        }
+    fi
+done
+
+candidate=$(mktemp -d "$releases/build.XXXXXXXX")
+trap 'rm -rf -- "$candidate"' EXIT
+git archive "$sha" -- "${sources[@]}" | tar -x -C "$candidate"
+docker build -t "$image" "$candidate"
+docker run --rm --network none --entrypoint python "$image" -c 'import pl_core_news_md'
+docker run --rm --network none \
+    --mount "type=bind,source=$candidate/tests,target=/app/tests,readonly" \
+    --mount "type=bind,source=$candidate/oczekiwane-json,target=/app/oczekiwane-json,readonly" \
+    --entrypoint python "$image" -m unittest discover -s tests
+
+# The top-level Compose file opens both immutable files by commit. A running
+# evaluation therefore gets the templates matching its image across a deploy.
+python3 - "$candidate" "$release" "$solution" "$image" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+candidate, release, solution = map(Path, sys.argv[1:4])
+image = sys.argv[4]
+services = {name: {"image": image} for name in ("cli", "llm", "pipeline")}
+services["cli"]["build"] = {"context": str(release)}
+template_volume = {
+    "type": "bind",
+    "source": "${ODWOLANIA_TEMPLATES:-" + str(release / "oczekiwane-json") + "}",
+    "target": "/app/oczekiwane-json",
+    "read_only": True,
+}
+for name in ("llm", "pipeline"):
+    services[name]["volumes"] = [template_volume]
+override = "compose.vm.yaml"
+(candidate / override).write_text(json.dumps({"services": services}), encoding="utf-8")
+include = {
+    "path": [str(release / "compose.yaml"), str(release / override)],
+    "project_directory": str(solution),
+}
+(candidate / "compose.release.yaml").write_text(json.dumps({"include": [include]}), encoding="utf-8")
+PY
+docker compose --env-file /dev/null --project-directory "$candidate" \
+    -f "$candidate/compose.yaml" -f "$candidate/compose.vm.yaml" config --quiet
+
+if [[ ! -d "$release" ]]; then
+    chmod 755 "$candidate"
+    mv -T "$candidate" "$release"
+fi
+docker compose --project-directory "$solution" -f "$release/compose.release.yaml" config --quiet
+for name in "${sources[@]}"; do
+    target=".releases/current/$name"
+    [[ "$name" != compose.yaml ]] || target='.releases/current/compose.release.yaml'
+    if [[ ! -L "$solution/$name" ]]; then
+        ln -s "$target" "$solution/$name"
+    fi
+done
+next_link="$releases/next-$sha"
+ln -sfnT "$sha" "$next_link"
+before_cutoff
+mv -Tf "$next_link" "$releases/current"
+echo "Wdrożono $sha"
