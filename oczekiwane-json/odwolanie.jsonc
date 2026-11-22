@@ -1,6 +1,8 @@
 // @match (?:[*|] )?odwołanie(?: do krajowej izby odwoławczej)?
 // @normalize OdwolanieKIO.data date-iso
 // @normalize OdwolanieKIO.czynnosc_dzien date-iso
+// @normalize Odwolujacy.*.nip digits
+// @normalize Zamawiajacy.*.nip digits
 // @normalize ZamowieniePubliczne.numer_bzp compact-upper
 // @normalize ZamowieniePubliczne.numer_ted ted
 {

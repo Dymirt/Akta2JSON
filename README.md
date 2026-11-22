@@ -4,7 +4,7 @@ CLI odczytuje warstwę tekstową PDF-ów i wykonuje OCR skanów za pomocą `anon
 
 ## Uruchomienie konkursowe
 
-Oceniający uruchamiają projekt z `/opt/solution` na Ubuntu 24.04 z 2 vCPU, 16 GB RAM i bez GPU. Odczytują JSON-y z `output/`. Limit organizatora wynosi 45 minut na 150 PDF-ów. Przed oceną zespół buduje obraz na serwerze i konfiguruje klucz Mistral w `/opt/solution/.env`. Polecenie dla oceniających i instrukcję próby zawiera [RUN.md](RUN.md). [Warunki UZP](https://github.com/Urzad-Zamowien-Publicznych/hacknation-2026/blob/eadffbce531eeac876d0f7e62c1cc6e857b05796/README.md) · [Instrukcja VM](https://github.com/Urzad-Zamowien-Publicznych/hacknation-2026/blob/eadffbce531eeac876d0f7e62c1cc6e857b05796/VM.md)
+Oceniający uruchamiają projekt z `/opt/solution` na Ubuntu 24.04 z 2 vCPU, 16 GB RAM i bez GPU. Odczytują JSON-y z `output/`. Zgodnie z komunikatem organizatora z 22 listopada limit wynosi 60 minut na 150 PDF-ów, czyli średnio 24 sekundy na PDF w całej partii. Przed oceną zespół buduje obraz na serwerze i konfiguruje klucz Mistral w `/opt/solution/.env`. Polecenie dla oceniających i instrukcję próby zawiera [RUN.md](RUN.md). [Aktualizacja limitu](USTALENIA-UZP.md#limit-czasu-na-przetworzenie-partii) · [Warunki UZP](https://github.com/Urzad-Zamowien-Publicznych/hacknation-2026/blob/eadffbce531eeac876d0f7e62c1cc6e857b05796/README.md) · [Instrukcja VM](https://github.com/Urzad-Zamowien-Publicznych/hacknation-2026/blob/eadffbce531eeac876d0f7e62c1cc6e857b05796/VM.md)
 
 Odpowiedzi mentorów dotyczące formatu wyników, liczenia F1, modeli i przekazania rozwiązania zebrano w [ustaleniach UZP z 21–22 listopada](USTALENIA-UZP.md).
 
@@ -134,6 +134,8 @@ docker image tag odwolania2json:uzp-amd64 hacknation2026-cli
 Przy publikacji obrazu sprawdź warunki redystrybucji, w tym udostępniania źródeł. PyMuPDF jest dostępny na AGPLv3 lub licencji komercyjnej, a model `pl_core_news_md` na GPLv3. [Licencjonowanie Artifex](https://artifex.com/licensing) · [Licencja modelu spaCy](https://github.com/explosion/spacy-models/releases/tag/pl_core_news_md-3.8.0)
 
 ## Testy
+
+Na VM UZP komenda dla oceniających przetworzyła 150 publicznych PDF-ów w **13 min 37 s**. Wszystkie 150 plików JSON miało prawidłowe ścieżki i uprawnienia `0600`. Poprawnie rozpoznano trzy klasy dokumentów i wszystkie 17 negatywów. Po poprawce formatu NIP i ponownej ekstrakcji trzech skanów ścisłe mikro-F1 na 132 dokumentach z etykietami wyniosło 88,79%. [Pomiar na VM](tests/raport-vm.md)
 
 W próbie lokalnej na 2 vCPU komenda konkursowa przetworzyła 150 publicznych PDF-ów w 10 min 58 s i rozpoznała wszystkie typy. Ścisłe mikro-F1 pól wyniosło 91,77% łącznie i 83,33% dla 30 nowych skanów. Pomiar poprzedził zmianę formatu negatywów i zasad zachowania kodu kraju przy rachunkach. Po zmianie ponownie sprawdzono wszystkie 17 negatywów. Każdy wynik zawierał dokładnie `{}`. [Raport z testu, dobór dokumentów i metoda liczenia](tests/raport-vm.md)
 

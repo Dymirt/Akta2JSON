@@ -132,6 +132,16 @@ class ExtractionTest(unittest.TestCase):
             "kwota": 12.5, "liczba": 3, "potwierdzone": True, "brak": None,
         })
 
+    def test_appeal_party_nips_keep_leading_zeros_after_restoring_markers(self):
+        path = Path(__file__).resolve().parents[1] / "oczekiwane-json/odwolanie.jsonc"
+        template = DocumentTemplate.load(path)
+        parties = {"Odwolujacy": [{"nip": "[NIP_1]"}], "Zamawiajacy": [{"nip": "[NIP_2]"}, {"nip": None}]}
+        mapping = {"[NIP_1]": "012-345-67-89", "[NIP_2]": "000-111-22-33"}
+        self.assertEqual(restore_markers(parties, mapping, template.formatters), {
+            "Odwolujacy": [{"nip": "0123456789"}],
+            "Zamawiajacy": [{"nip": "0001112233"}, {"nip": None}],
+        })
+
     def test_transfer_accounts_restore_markers_and_only_remove_whitespace(self):
         template = DocumentTemplate.load(Path(__file__).resolve().parents[1] / "oczekiwane-json/przelew.jsonc")
         mapping = {"[PL_IBAN_1]": "GB82 WEST\n1234 5698 7654 32", "[PL_IBAN_2]": "00\t1234 5678 9012 3456 7890 1234"}
