@@ -44,6 +44,9 @@ fi
 umask 022
 mkdir -p "$releases"
 sources=(RUN.md README.md USTALENIA-UZP.md Dockerfile .dockerignore compose.yaml requirements.txt odwolania oczekiwane-json tests deploy)
+if git cat-file -e "$sha:DOKUMENTACJA.md" 2>/dev/null; then
+    sources+=(DOKUMENTACJA.md)
+fi
 for name in "${sources[@]}"; do
     target=".releases/current/$name"
     [[ "$name" != compose.yaml ]] || target='.releases/current/compose.release.yaml'
