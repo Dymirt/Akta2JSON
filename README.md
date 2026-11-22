@@ -71,6 +71,8 @@ Przykładowy plik `protokol.jsonc` może wyglądać tak.
 
 Każda dyrektywa `@match` to wyrażenie regularne dopasowywane do całego wiersza wśród pierwszych 50 niepustych wierszy dokumentu, z pominięciem wielkości liter. Kilka dyrektyw to warianty alternatywne. Bez dyrektywy nagłówek wynika z nazwy pliku, z zamianą podkreśleń i łączników na spacje.
 
+Dyrektywa `// @singleton pelnomocnicy pełnomocnik` pozwala odzyskać pojedynczy obiekt `pełnomocnik` jako jeden element listy. Przy odzyskiwaniu pól pierwszeństwo ma klucz ze wzorca, a następnie jego jednoznaczny wariant pisowni, np. `pełnomocnicy`. Dotyczy to również pustej listy. Każdy odzyskany rekord przechodzi walidację pól i znaczników, a wynik zawsze używa nazwy `pelnomocnicy`.
+
 W końcowym JSON-ie pipeline automatycznie zastępuje ciągi białych znaków (w tym podziały wierszy) pojedynczą spacją i usuwa odstępy z obu końców każdej wartości tekstowej. Opcjonalne `@normalize ścieżka format` określa dodatkowe formatowanie pola po odtworzeniu wartości z mapy. Format `bank-account` usuwa z rachunku białe znaki i zachowuje kod kraju podany w dokumencie. Pozostałe formaty to `digits`, `spaces`, `compact-upper`, `ted`, `date-iso` (`YYYY-MM-DD`) i `transfer-title` (spacje oraz zewnętrzny cudzysłów tytułu przelewu). Znak `*` w ścieżce obejmuje elementy tablicy. Katalog wzorców można nadpisać przez `ODWOLANIA_TEMPLATES`.
 
 ### Opcjonalne reguły w Pythonie
@@ -100,6 +102,20 @@ Polecenie `llm extract` wysyła jedno żądanie HTTP z pełnym pseudonimizowanym
 Po błędzie walidacji CLI odzyskuje **lokalnie z tej samej odpowiedzi** poprawne pola i rekordy list. Jeśli struktura odpowiedzi uniemożliwia odzyskanie jakiejkolwiek wartości, wynikiem ekstrakcji jest szkielet wzorca z `null` w polach skalarnych i pustymi listami. W pełnym przebiegu `pipeline` wpisuje do niego także wartości ustalone regułami. Oryginalne wartości znaczników odtwarza lokalnie przed zapisem.
 
 Docker instaluje przez pip oficjalny pakiet `mistralai` w wersji przypiętej w `requirements.txt`. Ekstrakcja używa `client.chat.complete(...)` w trybie JSON, a polecenie `llm models` pobiera listę modeli przez `client.models.list()`. Obie operacje korzystają z regionu `eu`. Po błędzie HTTP klient zgłasza status bez ponawiania żądania. Polecenie `llm extract` zwraca kod `1`, a `pipeline` przetwarza pozostałe pliki i kończy partię kodem `1`. Gdy połączenie z API się nie powiedzie podczas pierwszego przebiegu `--json-only`, rozpoznany dokument otrzymuje częściowy JSON z lokalnie ustalonymi polami. Przy ponowieniu błąd połączenia zachowuje już opublikowany wynik. [Oficjalny SDK Mistrala dla Pythona](https://pypi.org/project/mistralai/2.10.1/)
+
+## Modele używane przy ekstrakcji i pseudonimizacji
+
+W komendzie z `RUN.md` działa jeden generatywny LLM, Mistral Small 4. Biblioteka `anon-legal-pl` pseudonimizuje dokument lokalnie przez Presidio i polski model rozpoznawania nazw własnych spaCy `pl_core_news_md`. Skany odczytuje lokalny Tesseract. Fork oferuje również drugi przebieg pseudonimizacji z Bielikiem 11B przez Ollamę. Wymaga on opcji `--bielik` w osobnym skrypcie. Komenda konkursowa i porównanie modeli korzystają ze ścieżki spaCy. [Wywołanie w projekcie](odwolania/cli.py) · [Opcja Bielika w przypiętym forku](https://github.com/Dymirt/anon-legal-pl/blob/ed24629fd3a4d81f114390bebffcbc22d31e632c/anonimizuj.py#L69-L77)
+
+W tabeli podano średnią arytmetyczną liczby parametrów wszystkich generatywnych LLM w danym wariancie, w miliardach. Każdy model ekstrakcji oceniano osobno. Dwie ostatnie kolumny pokazują hipotetyczne włączenie Bielika (11,169 mld) jako drugiego LLM. Punkty obliczono według tabeli z 21 listopada, którą UZP następnie wycofał. Aktualne publiczne README zapowiada nowe wytyczne. [Zmiana zasad UZP](https://github.com/Urzad-Zamowien-Publicznych/hacknation-2026/commit/519b26c6be0120144c43529b29ec73d441b836b1) · [Kryteria UZP](https://github.com/Urzad-Zamowien-Publicznych/hacknation-2026#sposób-punktacji-llm)
+
+| Model ekstrakcji | Średnia w teście F1 | Punkty wg dawnej tabeli | Średnia z dodatkowym Bielikiem | Punkty wg dawnej tabeli |
+| --- | ---: | ---: | ---: | ---: |
+| Ministral 3B 2512 | 3,849 mld | 20 | 7,509 mld | 20 |
+| Ministral 8B 2512 | 8,918 mld | 18 | 10,043 mld | 18 |
+| Mistral Small 4 | ok. 119 mld | 4 | ok. 65,084 mld | 8 |
+
+Liczby Ministrali pochodzą z opublikowanych wag BF16. Dla Small 4 uwzględniono 119 mld parametrów całego modelu MoE. Producent podaje też 6,5 mld parametrów aktywnych. [Wagi Ministral 3B](https://huggingface.co/api/models/mistralai/Ministral-3-3B-Instruct-2512-BF16) · [Wagi Ministral 8B](https://huggingface.co/api/models/mistralai/Ministral-3-8B-Instruct-2512-BF16) · [Karta Small 4](https://docs.mistral.ai/models/mistral-small-4-0-26-03) · [Wagi Bielika](https://huggingface.co/api/models/speakleash/Bielik-11B-v2.3-Instruct)
 
 ## Kod źródłowy
 
@@ -134,6 +150,10 @@ docker image tag odwolania2json:uzp-amd64 hacknation2026-cli
 Przy publikacji obrazu sprawdź warunki redystrybucji, w tym udostępniania źródeł. PyMuPDF jest dostępny na AGPLv3 lub licencji komercyjnej, a model `pl_core_news_md` na GPLv3. [Licencjonowanie Artifex](https://artifex.com/licensing) · [Licencja modelu spaCy](https://github.com/explosion/spacy-models/releases/tag/pl_core_news_md-3.8.0)
 
 ## Testy
+
+Mentorzy UZP potwierdzili zespołowi 22 listopada, że zapis rachunku rozstrzyga PDF. W obu polach rachunku JSON zachowuje `PL` lub inny prefiks obecny w dokumencie. Rachunek zapisany w PDF-ie bez prefiksu trafia do JSON-u bez prefiksu. Część publicznych etykiet przygotowano błędnie.
+
+W pierwszej próbie z modelem `ministral-8b-2512`, przed poprawką listy pełnomocników, **w 53 polach rachunku model poprawnie zachował prefiks `PL` widoczny w PDF-ie, a publiczna etykieta go pomijała**. W 34 cyfrowych przelewach sprawdzono wszystkie 68 rachunków nadawcy i odbiorcy. Taką rozbieżność między PDF-em a etykietą potwierdzono w 56 polach. Z tych 56 model odtworzył poprawnie 53, dwa pozostawił puste, a w jednym brakowało końcowych czterech cyfr. Ścisłe mikro-F1 na 132 dokumentach z etykietami wyniosło **87,62%**. Po uwzględnieniu źródłowego prefiksu w tych 56 polach referencyjnych te same wyniki ekstrakcji uzyskały **91,38%**. [Porównanie modeli i diagnoza F1](tests/porownanie-modeli.md)
 
 Na VM UZP komenda dla oceniających przetworzyła 150 publicznych PDF-ów w **13 min 37 s**. Wszystkie 150 plików JSON miało prawidłowe ścieżki i uprawnienia `0600`. Poprawnie rozpoznano trzy klasy dokumentów i wszystkie 17 negatywów. Po poprawce formatu NIP i ponownej ekstrakcji trzech skanów ścisłe mikro-F1 na 132 dokumentach z etykietami wyniosło 88,79%. [Pomiar na VM](tests/raport-vm.md)
 

@@ -10,7 +10,7 @@ from pathlib import Path
 
 from .mistral import MistralClient
 from .rules import empty_result
-from .templates import DocumentTemplate, load_json, normalize_spaces
+from .templates import POLISH_KEY_LETTERS, DocumentTemplate, load_json, normalize_spaces
 
 LOG = logging.getLogger(__name__)
 
@@ -50,38 +50,60 @@ class DocumentExtractor:
         # Some responses add the document type as a single extra level above the expected fields.
         if isinstance(answer, dict) and answer.keys() == {template.name} and template.name not in template.shape:
             wrapped = answer[template.name]
-            if isinstance(wrapped, dict) and wrapped.keys() & template.shape.keys():
+            if isinstance(wrapped, dict):
                 answer = wrapped
         try:
             return validate_result(template.shape, answer, template.formatters,
                                    tags=allowed_markers, local_fields=local_fields)
         except ValueError:
-            result, count = recover_fields(template.shape, answer, template.formatters,
-                                           tags=allowed_markers, local_fields=local_fields)
+            result, count = recover_fields(template.shape, answer, template.formatters, tags=allowed_markers,
+                                           local_fields=local_fields, singleton_aliases=template.singleton_aliases)
             LOG.warning("Odpowiedź niezgodna ze wzorcem. Odzyskano lokalnie %d wartości modelu.", count)
             return result
 
 
-def recover_fields(shape, value, formatters, path=(), *, tags, local_fields):
+def _recover_object_keys(shape, value, singleton_aliases):
+    """Match Polish spelling variants only when both objects have one unambiguous key."""
+    targets = {}
+    for key in shape:
+        spelling = key.translate(POLISH_KEY_LETTERS)
+        targets[spelling] = None if spelling in targets else key
+
+    recovered = value.copy()
+    for key, field in value.items():
+        target = targets.get(key.translate(POLISH_KEY_LETTERS))
+        if target is not None and target not in value:
+            # A second spelling in the response makes this alias ambiguous.
+            recovered[target] = None if target in recovered else field
+    for target, alias in singleton_aliases.items():
+        if target not in recovered and isinstance(value.get(alias), dict):
+            recovered[target] = [value[alias]]
+    return recovered
+
+
+def recover_fields(shape, value, formatters, path=(), *, tags, local_fields, singleton_aliases=None):
     """Keep validated fields from one response and count recovered non-null values."""
     if value is None or path in local_fields:
         return empty_result(shape), 0
     if isinstance(shape, dict):
         if not isinstance(value, dict):
             return empty_result(shape), 0
+        selector = tuple("*" if type(part) is int else part for part in path)
+        aliases = singleton_aliases.get(selector, {}) if singleton_aliases else {}
+        value = _recover_object_keys(shape, value, aliases)
         result = {}
         count = 0
         for key, field in shape.items():
-            result[key], found = recover_fields(field, value.get(key), formatters, (*path, key),
-                                                tags=tags, local_fields=local_fields)
+            result[key], found = recover_fields(field, value.get(key), formatters, (*path, key), tags=tags,
+                                                local_fields=local_fields, singleton_aliases=singleton_aliases)
             count += found
         return result, count
     if isinstance(shape, list):
         items, count = [], 0
         if isinstance(value, list) and shape:
             for index, row in enumerate(value):
-                item, found = recover_fields(shape[0], row, formatters, (*path, index),
-                                             tags=tags, local_fields=local_fields)
+                item, found = recover_fields(shape[0], row, formatters, (*path, index), tags=tags,
+                                             local_fields=local_fields, singleton_aliases=singleton_aliases)
                 if found:
                     items.append(item)
                     count += found

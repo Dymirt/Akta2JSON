@@ -44,6 +44,20 @@ RACHUNEK_W_TABELI = re.compile(
     r"[0-9]{2}(?: ?[0-9]{4}){6}(?!\w| [0-9])"
 )
 SEKCJA_BANKOWA = re.compile(r"dane (nadawcy|odbiorcy|zleceniodawcy|kontrahenta|zlecenia)", re.I)
+STRONY_PRZELEWU = {
+    "nadawca": "Z rachunku", "dane nadawcy": "Z rachunku",
+    "odbiorca": "Na rachunek", "dane odbiorcy": "Na rachunek",
+}
+NUMER_W_ZDANIU = r" nr ((?:[A-Z]{2} *)?[0-9]{2}[A-Z0-9 ]{0,65}(?:\n[A-Z0-9 ]{1,65})?),[ \n]*"
+RACHUNKI_W_ZDANIU = {
+    "z_rachunku": re.compile(
+        r"^Bank potwierdza, że w dniu [^\n\f;:]{1,45} z rachunku" + NUMER_W_ZDANIU + r"prowadzonego dla\b", re.I | re.M
+    ),
+    "na_rachunek": re.compile(
+        r"\bwykonano przelew(?: krajowy)? w kwocie [0-9][0-9., ]*(?:[a-z]{3}|zł)? na rachunek"
+        + NUMER_W_ZDANIU + r"prowadzony dla\b", re.I
+    ),
+}
 STOPKA_BANKU = re.compile(r"Dokument jest wydrukiem komputerowym\b", re.I)
 # Przykłady ciągłości wiersza: numer sprawy, faktury lub transakcji.
 ODSYLACZ = re.compile(r"\b(?:[^\W\d_]+[./_-]?[0-9]|[0-9]+[/_-][0-9]+)")
@@ -59,13 +73,31 @@ def _wiersze(tekst):
     return wiersze
 
 
+def _rachunki_pionowe(strona):
+    """Nazwa, adres z kodem pocztowym i samodzielny rachunek pod nagłówkiem strony."""
+    naglowki = [(i, STRONY_PRZELEWU[w.casefold()]) for i, w in enumerate(strona) if w.casefold() in STRONY_PRZELEWU]
+    if len(naglowki) != 2 or naglowki[0][1] == naglowki[1][1]:
+        return
+    for i, rola in naglowki:
+        if i + 4 >= len(strona):
+            continue
+        nazwa, adres, rachunek, granica = strona[i + 1:i + 5]
+        if granica.casefold() not in STRONY_PRZELEWU and not ETYKIETA_FORMULARZA.fullmatch(granica):
+            continue
+        if not re.search(r"\b[0-9]{2}-[0-9]{3}\s+[^\W\d_]", adres) or not RACHUNEK_W_TABELI.fullmatch(rachunek):
+            continue
+        if (re.search(r"[^\W\d_]", nazwa) and ":" not in nazwa and not ETYKIETA_FORMULARZA.fullmatch(nazwa)
+                and not RACHUNEK_W_TABELI.search(nazwa) and not RACHUNEK_W_TABELI.search(adres)):
+            yield i + 3, rola
+
+
 def _wiersze_tabeli(strona):
     """Rozdziel nagłówki i komórki, które OCR odczytał poziomo w jednym wierszu."""
     kolumny_wyciagu = any(w.casefold() == "data opis kwota" for w in strona)
     # W dwukolumnowym formularzu OCR potrafi odczytać najpierw etykiety, potem rachunki z nazwami stron.
     tekst_strony = "\n".join(strona)
     kolejnosc_stron = re.search(r"(?im)^dane[ .]*\nnadawcy\ndane[ .]*\nodbiorcy$", tekst_strony)
-    role = {}
+    role = dict(_rachunki_pionowe(strona))
     if kolejnosc_stron and any(re.match(r"Typ przelewu\b", w, re.I) for w in strona):
         numery = [i for i, w in enumerate(strona) if RACHUNEK_W_TABELI.fullmatch(w)]
         koniec_etykiet = tekst_strony.count("\n", 0, kolejnosc_stron.end())
@@ -157,6 +189,12 @@ def _pola(wiersze):
                 pola[pole] = None if pole in pola else (wartosc or "", dalsze)
     for pole, wartosc in _rachunki_w_sekcjach(wiersze):
         pola[pole] = None if pole in pola else wartosc
+    # Przecinek i dalszy opis właściciela wyznaczają koniec numeru także po złamaniu wiersza.
+    tekst = "\n".join(wiersze)
+    for pole, wzorzec in RACHUNKI_W_ZDANIU.items():
+        for m in wzorzec.finditer(tekst):
+            if RACHUNEK_W_TABELI.fullmatch(normalize_spaces(m[1])):
+                pola[pole] = None if pole in pola else (m[1], len(wiersze))
     return pola
 
 

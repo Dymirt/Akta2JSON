@@ -42,6 +42,55 @@ class RegulyPrzelewuTest(unittest.TestCase):
         REGULA.zastosuj("Na rachunek: GB82 WEST 1234\nBANK\nOpis: opłata", self.wynik)
         self.assertIsNone(self.dane["na_rachunek"])
 
+    def test_rachunki_w_zdaniu_banku_z_podzialem_wiersza(self):
+        REGULA.zastosuj(
+            "Bank potwierdza, że w dniu 2026-02-01 z rachunku nr GB82 WEST 1234 5698 7654 32, "
+            "prowadzonego dla firmy A, wykonano przelew w kwocie 12,00 PLN "
+            "na rachunek nr PL00 1234 5678 9012 3456 7890\n1234, prowadzony dla firmy B.", self.wynik
+        )
+        self.assertEqual(self.dane["z_rachunku"], "GB82WEST12345698765432")
+        self.assertEqual(self.dane["na_rachunek"], "PL00123456789012345678901234")
+
+    def test_rachunek_w_zdaniu_wymaga_jednego_pelnego_numeru_i_jawnego_konca(self):
+        poczatek = "Wykonano przelew krajowy w kwocie 10 PLN na rachunek nr "
+        numer = "00 1234 5678 9012 3456 7890"
+        koniec = ", prowadzony dla firmy B."
+        for fragment in (numer + "\f1234", numer + "\nKwota: 1234", numer + "\nul. 1234",
+                         numer + " 1234\n" + numer + " 1234", numer + " 1234, adres: 1234",
+                         "ZZ" + numer + " 1234"):
+            with self.subTest(fragment=fragment):
+                self.dane["na_rachunek"] = None
+                REGULA.zastosuj(poczatek + fragment + koniec, self.wynik)
+                self.assertIsNone(self.dane["na_rachunek"])
+        self.dane["na_rachunek"] = None
+        REGULA.zastosuj(poczatek + numer + " 1234" + koniec + "\n" + poczatek + numer + " 4321" + koniec, self.wynik)
+        self.assertIsNone(self.dane["na_rachunek"])
+
+    def test_dwie_strony_z_rachunkami_pod_adresem(self):
+        REGULA.zastosuj(
+            "Nadawca\nSpółka A\nul. Leśna 7, 00-001 Miasto\n00 1234 5678 9012 3456 7890 1234\n"
+            "Dane odbiorcy\nSpółka B\nul. Leśna 8, 00-002 Miasto\nGB82 WEST 1234 5698 7654 32\n"
+            "Kwota przelewu\n10,00 PLN", self.wynik
+        )
+        self.assertEqual(self.dane["z_rachunku"], "00123456789012345678901234")
+        self.assertEqual(self.dane["na_rachunek"], "GB82WEST12345698765432")
+
+    def test_rachunek_pod_adresem_wymaga_granic_i_jednoznacznej_roli(self):
+        naglowek = "Dane nadawcy\nSpółka A\nul. Leśna 7, 00-001 Miasto"
+        numer = "PL00 1234 5678 9012 3456 7890 1234"
+        drugi = "Odbiorca\nSpółka B\nul. Leśna 8, 00-002 Miasto\n" + numer + "\nKwota"
+        for tekst in (
+            naglowek + "\n" + numer + "\n" + numer + "\n" + drugi,
+            naglowek + "\n" + numer + "\n1234\n" + drugi,
+            naglowek + "\n" + numer + "\n" + drugi.replace("Odbiorca", "Nadawca"),
+            naglowek + "\f" + numer + "\n" + drugi,
+            naglowek + "\nIdentyfikator klienta\n" + numer + "\n" + drugi,
+        ):
+            with self.subTest(tekst=tekst):
+                self.dane["z_rachunku"] = None
+                REGULA.zastosuj(tekst, self.wynik)
+                self.assertIsNone(self.dane["z_rachunku"])
+
     def test_waluta_kwoty_musi_byc_jednoznaczna(self):
         for tekst in (
             "Kwota: 200,10",

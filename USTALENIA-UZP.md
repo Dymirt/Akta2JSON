@@ -8,6 +8,8 @@ W komunikacie z 22 listopada 2026 r. przekazanym zespołowi organizator wydłuż
 
 ## Co zapisywać w JSON-ie
 
+W rozmowie z zespołem 22 listopada mentorzy potwierdzili, że w obu polach rachunku obowiązuje zapis z PDF-u. Zachowuje się `PL` lub inny widoczny prefiks. Jeżeli PDF podaje numer bez prefiksu, wynik również ma być bez prefiksu. Niektóre publiczne etykiety pomijają obecny w PDF-ie kod kraju.
+
 | Pytanie | Odpowiedź na kanale | Konsekwencja dla projektu |
 | --- | --- | --- |
 | Co zrobić z PDF-em spoza trzech klas? | 21.11 o 13:50 i 22:32 MateuszSz potwierdził pusty obiekt `{}`. O 22:19 odpowiedź użytkownika `_rk` potwierdziła również nazwę pliku wynikowego. | Każdy PDF dostaje plik w tej samej ścieżce względnej z rozszerzeniem `.json`. Np. `potwierdzenie_przelewu.pdf` daje `potwierdzenie_przelewu.json`. Dla nierozpoznanego dokumentu i dla niejednoznacznej klasyfikacji pipeline zapisuje dwa bajty `{}` i pomija API. |

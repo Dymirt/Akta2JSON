@@ -3,7 +3,7 @@
 import json
 import re
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
@@ -12,7 +12,8 @@ from .rules import Rule, load_rule
 
 JSONC_TOKEN = re.compile(r'"(?:\\.|[^"\\])*"|//[^\r\n]*|/\*[\s\S]*?\*/')
 TRAILING_COMMA = re.compile(r'"(?:\\.|[^"\\])*"|,(?=\s*[}\]])')
-DIRECTIVE = re.compile(r"//[ \t]*@(match|normalize)(?:[ \t]+(.*))?")
+DIRECTIVE = re.compile(r"//[ \t]*@(match|normalize|singleton)(?:[ \t]+(.*))?")
+POLISH_KEY_LETTERS = str.maketrans("ąćęłńóśźżĄĆĘŁŃÓŚŹŻ", "acelnoszzACELNOSZZ")
 TED_ISSUE = re.compile(r"(\d{4})/S\d{1,3}-(\d{6,8})", re.IGNORECASE)
 HYPHENS = str.maketrans("‐‑–", "---")
 QUOTE_PAIRS = {"„": "”", "“": "”", '"': '"', "«": "»", "»": "«"}
@@ -103,8 +104,27 @@ def _field_at(shape, path):
         elif isinstance(shape, dict) and part in shape:
             shape = shape[part]
         else:
-            raise ValueError(f"Nieznane pole formatowania: {'.'.join(path)}")
+            raise ValueError(f"Nieznane pole wzorca: {'.'.join(path)}")
     return shape
+
+
+def _register_singleton(shape, aliases, argument):
+    parts = argument.split()
+    if len(parts) != 2:
+        raise ValueError("Dyrektywa @singleton wymaga ścieżki listy i klucza pojedynczego rekordu.")
+    path, alias = parts[0].split("."), parts[1]
+    parent = tuple(path[:-1])
+    key = path[-1]
+    siblings = _field_at(shape, parent)
+    records = siblings.get(key) if isinstance(siblings, dict) else None
+    if not isinstance(records, list) or not records or not isinstance(records[0], dict):
+        raise ValueError(f"Dyrektywa @singleton wymaga listy obiektów: {parts[0]}")
+    by_key = aliases.setdefault(parent, {})
+    names = [name.translate(POLISH_KEY_LETTERS) for name in (*siblings, *by_key.values())]
+    if (key in by_key or names.count(key.translate(POLISH_KEY_LETTERS)) != 1
+            or alias.translate(POLISH_KEY_LETTERS) in names):
+        raise ValueError(f"Niejednoznaczna dyrektywa @singleton: {argument}")
+    by_key[key] = alias
 
 
 @dataclass(frozen=True)
@@ -115,6 +135,7 @@ class DocumentTemplate:
     headers: tuple[re.Pattern, ...]
     formatters: dict[FieldPath, Formatter]
     rule: Rule | None = None
+    singleton_aliases: dict[FieldPath, dict[str, str]] = field(default_factory=dict)
 
     def apply_rules(self, text: str, result: dict) -> None:
         if self.rule:
@@ -139,6 +160,7 @@ class DocumentTemplate:
 
         headers = []
         formatters = {}
+        singleton_aliases = {}
 
         def read_directive(token):
             directive = DIRECTIVE.fullmatch(token[0])
@@ -150,6 +172,8 @@ class DocumentTemplate:
                 if not argument:
                     raise ValueError("Dyrektywa @match wymaga wzorca nagłówka.")
                 headers.append(re.compile(argument, re.IGNORECASE))
+            elif command == "singleton":
+                _register_singleton(shape, singleton_aliases, argument)
             else:
                 parts = argument.split()
                 if len(parts) != 2 or parts[1] not in FORMATTERS:
@@ -168,7 +192,7 @@ class DocumentTemplate:
         if not headers:
             title = name.replace("_", " ").replace("-", " ")
             headers.append(re.compile(re.escape(title), re.IGNORECASE))
-        return cls(name, prompt, shape, tuple(headers), formatters, rule)
+        return cls(name, prompt, shape, tuple(headers), formatters, rule, singleton_aliases)
 
 
 def _header_lines(text):
