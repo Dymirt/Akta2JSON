@@ -16,6 +16,8 @@ Po dwukrotnym przetworzeniu **tych samych 44 odpowiedzi** poprzedni kod zwróci�
 
 W sprawie 05 końcowe cztery cyfry rachunku odbiorcy znajdowały się w kolejnym wierszu zdania. W sprawie 23 numery nadawcy i odbiorcy były zapisane osobno pod ich adresami. Reguły odczytują teraz numer w obu układach, sprawdzają jego strukturę oraz granice pola i zachowują prefiks źródłowy. Dla sprawy 16 ten sam odczyt zachowuje oba numery bez prefiksu. W całej partii zmieniło się osiem pól rozwiązywanych lokalnie w czterech potwierdzeniach. Dwa z nich reguły przetwarzają już w całości, co zmniejsza liczbę żądań z 107 do 105 na 150 PDF-ów. [Reguły przelewów](../oczekiwane-json/przelew.py) · [Testy dla numerów z prefiksem i bez niego](test_reguly_przelewu.py)
 
+Na wszystkich 60 cyfrowych przelewach reguły lokalne odczytały poprawnie 112 ze 120 rachunków, wcześniej 98. Każdą z 14 nowych wartości potwierdzono niezależnym odczytem tekstu z oryginalnego PDF-u. W dziesięciu skanach liczba rachunków zgodnych z publiczną etykietą pozostała na poziomie 17/20. Dwa pola były puste, a w jednym OCR zmienił cyfrę.
+
 ## Metoda pomiaru
 
 Partia obejmowała 102 cyfrowe dokumenty z 34 publicznych spraw, 30 skanów z etykietami, jeden dodatkowy skan ze znaną klasą oraz 17 negatywów. Do pomiaru pól weszły 132 dokumenty. Puste obiekty dla negatywów oraz rozpoznanie klasy dodatkowego skanu oceniano osobno. Jest to lokalny test na danych publicznych, częściowo wykorzystywanych do strojenia. [Dokładny dobór partii](raport-vm.md) · [Rewizja danych UZP](https://github.com/Urzad-Zamowien-Publicznych/hacknation-2026/tree/eadffbce531eeac876d0f7e62c1cc6e857b05796)

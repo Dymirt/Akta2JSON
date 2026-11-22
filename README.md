@@ -39,7 +39,7 @@ Domyślnie przetwarza całe drzewo `input/`. Podaj ścieżki po nazwie usługi, 
 
 Klient używa regionalnego adresu `MISTRAL_BASE_URL=https://api.eu.mistral.ai/v1`. Mistral opisuje lokalizację inferencji jako UE i EFTA. Wymóg UZP obejmuje UE lub EOG, więc dla konkretnego wdrożenia trzeba potwierdzić lokalizację u dostawcy. [Regiony inferencji Mistrala](https://docs.mistral.ai/inference/regional-inference)
 
-Domyślnym modelem jest `mistral-small-2603` (Mistral Small 4, Apache 2.0). Dla lokalnych eksperymentów możesz ustawić `MISTRAL_MODEL` w `.env` albo przekazać `--model` do `pipeline` lub `llm extract`. Opcja `--model` ma pierwszeństwo. [Karta modelu](https://docs.mistral.ai/models/mistral-small-4-0-26-03)
+Domyślnym modelem jest `ministral-8b-2512` (Ministral 3 8B Instruct 2512, Apache 2.0). Dla lokalnych eksperymentów możesz ustawić `MISTRAL_MODEL` w `.env` albo przekazać `--model` do `pipeline` lub `llm extract`. Opcja `--model` ma pierwszeństwo. [Karta modelu](https://huggingface.co/mistralai/Ministral-3-8B-Instruct-2512)
 
 Dostępne dla swojego klucza modele czatu w regionie europejskim wyświetlisz poleceniem
 
@@ -94,7 +94,7 @@ Znaczenie pól określają trzy [oryginalne wzorce UZP](https://github.com/Urzad
 Aby uzyskać na stdout sam JSON ze znacznikami z już spseudonimizowanego odwołania, uruchom osobny etap ekstrakcji.
 
 ```sh
-docker compose run --rm -T llm extract --model mistral-small-2603 output/przyklad_04/odwolanie.txt oczekiwane-json/odwolanie.jsonc
+docker compose run --rm -T llm extract --model ministral-8b-2512 output/przyklad_04/odwolanie.txt oczekiwane-json/odwolanie.jsonc
 ```
 
 Polecenie `llm extract` wysyła jedno żądanie HTTP z pełnym pseudonimizowanym tekstem i wzorcem JSONC. Sprawdza składnię odpowiedzi, klucze, typy pól, elementy list i znaczniki. Wypisuje na stdout JSON ze znacznikami, które odpowiadają wartościom z lokalnej mapy.
@@ -105,7 +105,7 @@ Docker instaluje przez pip oficjalny pakiet `mistralai` w wersji przypiętej w `
 
 ## Modele używane przy ekstrakcji i pseudonimizacji
 
-W komendzie z `RUN.md` działa jeden generatywny LLM, Mistral Small 4. Biblioteka `anon-legal-pl` pseudonimizuje dokument lokalnie przez Presidio i polski model rozpoznawania nazw własnych spaCy `pl_core_news_md`. Skany odczytuje lokalny Tesseract. Fork oferuje również drugi przebieg pseudonimizacji z Bielikiem 11B przez Ollamę. Wymaga on opcji `--bielik` w osobnym skrypcie. Komenda konkursowa i porównanie modeli korzystają ze ścieżki spaCy. [Wywołanie w projekcie](odwolania/cli.py) · [Opcja Bielika w przypiętym forku](https://github.com/Dymirt/anon-legal-pl/blob/ed24629fd3a4d81f114390bebffcbc22d31e632c/anonimizuj.py#L69-L77)
+W komendzie z `RUN.md` działa jeden generatywny LLM, Ministral 3 8B Instruct 2512. Biblioteka `anon-legal-pl` pseudonimizuje dokument lokalnie przez Presidio i polski model rozpoznawania nazw własnych spaCy `pl_core_news_md`. Skany odczytuje lokalny Tesseract. Fork oferuje również drugi przebieg pseudonimizacji z Bielikiem 11B przez Ollamę. Wymaga on opcji `--bielik` w osobnym skrypcie. Komenda konkursowa i porównanie modeli korzystają ze ścieżki spaCy. [Wywołanie w projekcie](odwolania/cli.py) · [Opcja Bielika w przypiętym forku](https://github.com/Dymirt/anon-legal-pl/blob/ed24629fd3a4d81f114390bebffcbc22d31e632c/anonimizuj.py#L69-L77)
 
 W tabeli podano średnią arytmetyczną liczby parametrów wszystkich generatywnych LLM w danym wariancie, w miliardach. Każdy model ekstrakcji oceniano osobno. Dwie ostatnie kolumny pokazują hipotetyczne włączenie Bielika (11,169 mld) jako drugiego LLM. Punkty obliczono według tabeli z 21 listopada, którą UZP następnie wycofał. Aktualne publiczne README zapowiada nowe wytyczne. [Zmiana zasad UZP](https://github.com/Urzad-Zamowien-Publicznych/hacknation-2026/commit/519b26c6be0120144c43529b29ec73d441b836b1) · [Kryteria UZP](https://github.com/Urzad-Zamowien-Publicznych/hacknation-2026#sposób-punktacji-llm)
 

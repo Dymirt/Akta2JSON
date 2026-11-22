@@ -19,7 +19,7 @@ from .prompts import extraction_instructions
 
 
 EU_BASE_URL = "https://api.eu.mistral.ai/v1"
-DEFAULT_MODEL = "mistral-small-2603"
+DEFAULT_MODEL = "ministral-8b-2512"
 DEFAULT_RETRY_AFTER = 60
 MAX_RETRY_AFTER = 45 * 60
 
